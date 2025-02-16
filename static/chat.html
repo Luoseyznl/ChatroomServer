@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat Room</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f2f5;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            height: calc(100vh - 40px);
+            margin: 0 auto;
+        }
+        .sidebar {
+            flex: 0 0 300px;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            box-sizing: border-box;
+        }
+        .main-content {
+            flex: 1;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            box-sizing: border-box;
+            min-width: 0; /* 防止内容溢出 */
+        }
+        .room-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            flex: 1;
+            overflow-y: auto;
+        }
+        .room-item {
+            padding: 12px 16px;
+            margin: 5px 0;
+            background: #f0f2f5;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .room-item:hover {
+            background: #e4e6eb;
+            transform: translateY(-1px);
+        }
+        .room-item.active {
+            background: #1877f2;
+            color: white;
+            font-weight: 500;
+        }
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 12px 16px;
+            background: #f0f2f5;
+            border-radius: 18px;
+            max-width: 70%;
+            align-self: flex-start;
+        }
+        .message.sent {
+            align-self: flex-end;
+            background: #0084ff;
+            color: white;
+        }
+        .message .sender {
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+        .message .content {
+            margin: 5px 0;
+            line-height: 1.4;
+        }
+        .message .time {
+            font-size: 0.8em;
+            color: #65676b;
+            margin-top: 5px;
+        }
+        .message.sent .time {
+            color: rgba(255, 255, 255, 0.7);
+        }
+        .input-area {
+            display: flex;
+            gap: 10px;
+            padding: 10px;
+            background: #f0f2f5;
+            border-radius: 8px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            font-size: 15px;
+            transition: all 0.2s ease;
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #1877f2;
+            box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.2);
+        }
+        button {
+            padding: 12px 24px;
+            background: #1877f2;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        button:hover {
+            background: #166fe5;
+            transform: translateY(-1px);
+        }
+        button:disabled {
+            background: #e4e6eb;
+            color: #bcc0c4;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .create-room {
+            margin-bottom: 20px;
+        }
+        #createRoomForm {
+            display: flex;
+            gap: 10px;
+        }
+        #createRoomForm input {
+            flex: 1;
+        }
+        h3 {
+            margin: 0 0 15px 0;
+            color: #1c1e21;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="create-room">
+                <form id="createRoomForm">
+                    <input type="text" id="roomName" placeholder="Room name" required>
+                    <button type="submit">Create</button>
+                </form>
+            </div>
+            <h3>Chat Rooms</h3>
+            <ul id="roomList" class="room-list"></ul>
+        </div>
+        <div class="main-content">
+            <div id="messages" class="messages"></div>
+            <div class="input-area">
+                <input type="text" id="messageInput" placeholder="Type a message...">
+                <button id="sendButton">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentRoom = null;
+        let username = localStorage.getItem('username');
+        let password = localStorage.getItem('password');
+
+        if (!username || !password) {
+            window.location.href = '/login.html';
+        }
+
+        // Auto login
+        async function autoLogin() {
+            try {
+                const response = await fetch('/auto_login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                if (!response.ok) {
+                    window.location.href = '/login.html';
+                }
+            } catch (error) {
+                console.error('Auto login failed:', error);
+                window.location.href = '/login.html';
+            }
+        }
+
+        // Create room
+        document.getElementById('createRoomForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const roomName = document.getElementById('roomName').value;
+            
+            try {
+                const response = await fetch('/create_room', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ name: roomName, creator: username })
+                });
+                
+                if (response.ok) {
+                    document.getElementById('roomName').value = '';
+                    loadRooms();
+                } else {
+                    const data = await response.json();
+                    alert(data.error || 'Failed to create room');
+                }
+            } catch (error) {
+                console.error('Error creating room:', error);
+                alert('Failed to create room');
+            }
+        });
+
+        // Load rooms and check current room status
+        async function loadRooms() {
+            try {
+                const response = await fetch('/rooms');
+                const rooms = await response.json();
+                
+                const roomList = document.getElementById('roomList');
+                roomList.innerHTML = '';
+                
+                rooms.forEach(room => {
+                    const li = document.createElement('li');
+                    li.className = 'room-item';
+                    li.textContent = room.name;
+                    
+                    // 检查是否是当前房间
+                    if (currentRoom === room.name) {
+                        li.classList.add('active');
+                    }
+                    
+                    li.onclick = () => joinRoom(room.name);
+                    roomList.appendChild(li);
+                });
+            } catch (error) {
+                console.error('Error loading rooms:', error);
+            }
+        }
+
+        // Join room
+        async function joinRoom(roomName) {
+            if (currentRoom === roomName) {
+                return; // Already in this room
+            }
+
+            const messageInput = document.getElementById('messageInput');
+            const sendButton = document.getElementById('sendButton');
+            const messagesDiv = document.getElementById('messages');
+            
+            try {
+                const response = await fetch('/join_room', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ room: roomName, username })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Update room state
+                    currentRoom = roomName;
+                    localStorage.setItem('currentRoom', roomName);
+                    
+                    // Update UI
+                    const roomItems = document.querySelectorAll('.room-item');
+                    roomItems.forEach(item => {
+                        item.classList.remove('active');
+                        if (item.textContent === roomName) {
+                            item.classList.add('active');
+                        }
+                    });
+                    
+                    // Enable and clear message input
+                    messageInput.disabled = false;
+                    sendButton.disabled = false;
+                    messageInput.value = '';
+                    messageInput.focus();
+                    
+                    // Clear and load messages
+                    messagesDiv.innerHTML = '';
+                    if (data.messages) {
+                        displayMessages(data.messages);
+                    }
+                    
+                    if (data.message === "Already in room") {
+                        console.log(`Already in room: ${roomName}`);
+                    }
+                } else {
+                    const data = await response.json();
+                    currentRoom = null;
+                    localStorage.removeItem('currentRoom');
+                    messageInput.disabled = true;
+                    sendButton.disabled = true;
+                    messagesDiv.innerHTML = '';
+                    alert(data.error || 'Failed to join room');
+                }
+            } catch (error) {
+                console.error('Error joining room:', error);
+                currentRoom = null;
+                localStorage.removeItem('currentRoom');
+                messageInput.disabled = true;
+                sendButton.disabled = true;
+                messagesDiv.innerHTML = '';
+                alert('Failed to join room');
+            }
+        }
+
+        // Send message
+        async function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const sendButton = document.getElementById('sendButton');
+            const messagesDiv = document.getElementById('messages');
+            
+            const message = messageInput.value.trim();
+            
+            if (!message) {
+                return;
+            }
+            
+            // Check if we're in a room
+            if (!currentRoom) {
+                alert('Please join a room first');
+                messageInput.disabled = true;
+                sendButton.disabled = true;
+                return;
+            }
+            
+            try {
+                const response = await fetch('/send_message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        room: currentRoom,
+                        sender: username,
+                        content: message
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    messageInput.value = '';
+                    
+                    // Update messages if they're included in the response
+                    if (data.messages) {
+                        displayMessages(data.messages);
+                    }
+                } else {
+                    const data = await response.json();
+                    if (data.error === 'Not in room') {
+                        // Reset room state
+                        currentRoom = null;
+                        localStorage.removeItem('currentRoom');
+                        messageInput.disabled = true;
+                        sendButton.disabled = true;
+                        messagesDiv.innerHTML = '';
+                        
+                        // Remove active room highlight
+                        const roomItems = document.querySelectorAll('.room-item');
+                        roomItems.forEach(item => item.classList.remove('active'));
+                        
+                        alert('You are no longer in this room. Please join again.');
+                    } else {
+                        alert(data.error || 'Failed to send message');
+                    }
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+                alert('Failed to send message');
+            }
+        }
+
+        // Display messages
+        function displayMessages(messages) {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = '';
+            
+            messages.forEach(msg => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message';
+                if (msg.sender === username) {
+                    messageDiv.classList.add('sent');
+                }
+                
+                const senderDiv = document.createElement('div');
+                senderDiv.className = 'sender';
+                senderDiv.textContent = msg.sender;
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'content';
+                contentDiv.textContent = msg.content;
+                
+                const timeDiv = document.createElement('div');
+                timeDiv.className = 'time';
+                timeDiv.textContent = new Date(msg.timestamp).toLocaleString();
+                
+                messageDiv.appendChild(senderDiv);
+                messageDiv.appendChild(contentDiv);
+                messageDiv.appendChild(timeDiv);
+                
+                messagesDiv.appendChild(messageDiv);
+            });
+            
+            // Scroll to bottom
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Poll for new messages
+        async function pollMessages() {
+            if (!currentRoom) return;
+            
+            try {
+                const response = await fetch(`/messages?room=${currentRoom}`);
+                if (response.ok) {
+                    const messages = await response.json();
+                    displayMessages(messages);
+                }
+            } catch (error) {
+                console.error('Error polling messages:', error);
+            }
+        }
+
+        // Initialize
+        async function initialize() {
+            try {
+                // Get DOM elements
+                const messageInput = document.getElementById('messageInput');
+                const sendButton = document.getElementById('sendButton');
+                const messagesDiv = document.getElementById('messages');
+                
+                // Setup event listeners
+                sendButton.addEventListener('click', sendMessage);
+                messageInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        sendMessage();
+                    }
+                });
+
+                // Auto login
+                await autoLogin();
+                
+                // Load rooms first
+                await loadRooms();
+                
+                // Check for saved room
+                const storedRoom = localStorage.getItem('currentRoom');
+                if (storedRoom) {
+                    // Try to join the saved room
+                    try {
+                        await joinRoom(storedRoom);
+                    } catch (error) {
+                        console.error('Failed to join saved room:', error);
+                        localStorage.removeItem('currentRoom');
+                        currentRoom = null;
+                    }
+                }
+                
+                // Set initial input state
+                if (currentRoom) {
+                    messageInput.disabled = false;
+                    sendButton.disabled = false;
+                } else {
+                    messageInput.disabled = true;
+                    sendButton.disabled = true;
+                    messagesDiv.innerHTML = '';
+                }
+                
+                // Start polling
+                setInterval(pollMessages, 1000);
+                setInterval(loadRooms, 5000);
+            } catch (error) {
+                console.error('Initialization error:', error);
+                alert('Failed to initialize chat. Please refresh the page.');
+            }
+        }
+
+        // Start the application
+        initialize().catch(error => {
+            console.error('Fatal error:', error);
+            alert('Failed to start chat. Please refresh the page.');
+        });
+    </script>
+</body>
+</html>

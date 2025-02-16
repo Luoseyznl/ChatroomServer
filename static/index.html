@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat Application</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        #loginForm {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        #loginForm h2 {
+            color: #1a73e8;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #5f6368;
+            font-size: 14px;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .input-group input:focus {
+            border-color: #1a73e8;
+            box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+            outline: none;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 30px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button.primary {
+            background: #1a73e8;
+            color: white;
+        }
+
+        button.secondary {
+            background: #f8f9fa;
+            color: #1a73e8;
+            border: 1px solid #dadce0;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        #chatInterface {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: white;
+        }
+
+        #chatInterface.active {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+        }
+
+        #sidebar {
+            background: #f8f9fa;
+            border-right: 1px solid #dadce0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        #sidebar h3 {
+            color: #202124;
+            font-size: 18px;
+            margin-bottom: 16px;
+            padding-left: 8px;
+        }
+
+        .room-creation {
+            background: white;
+            padding: 12px;
+            border-radius: 12px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .room-creation h4 {
+            color: #5f6368;
+            font-size: 14px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        #newRoomName {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        #createRoomButton {
+            width: 100%;
+            padding: 8px;
+            font-size: 14px;
+        }
+
+        .room-search {
+            background: white;
+            padding: 12px;
+            border-radius: 12px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .room-search h4 {
+            color: #5f6368;
+            font-size: 14px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        #roomSearchInput {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        #roomList {
+            flex: 1;
+            overflow-y: auto;
+            background: white;
+            border-radius: 12px;
+            padding: 8px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        #roomList .room-item {
+            padding: 10px 12px;
+            margin: 4px 0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #202124;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #roomList .room-item:hover {
+            background: #e8f0fe;
+            color: #1a73e8;
+        }
+
+        #roomList .room-item.active {
+            background: #e8f0fe;
+            color: #1a73e8;
+        }
+
+        #roomList .room-icon {
+            width: 24px;
+            height: 24px;
+            background: #1a73e8;
+            border-radius: 12px;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        #roomList .room-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        #roomList .room-name {
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #roomList .room-members {
+            font-size: 12px;
+            color: #5f6368;
+            margin-top: 2px;
+        }
+
+        #mainContent {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background: white;
+        }
+
+        #currentRoom {
+            padding: 20px;
+            border-bottom: 1px solid #dadce0;
+            color: #202124;
+            font-size: 20px;
+            font-weight: 500;
+        }
+
+        #messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #messages::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #messages::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        #messages::-webkit-scrollbar-thumb {
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+
+        .message-container {
+            display: inline-block;
+            max-width: 100%;
+        }
+
+        .message {
+            margin: 16px 0;
+            max-width: 85%;
+            clear: both;
+            animation: fadeIn 0.3s ease;
+            position: relative;
+        }
+
+        .message.self {
+            float: right;
+        }
+
+        .message.self .message-container {
+            float: right;
+        }
+
+        .message.other {
+            float: left;
+        }
+
+        .message-content {
+            padding: 12px 16px;
+            border-radius: 18px;
+            position: relative;
+            word-wrap: break-word;
+            font-size: 15px;
+            line-height: 1.4;
+        }
+
+        .message.self .message-content {
+            background: #1a73e8;
+            color: white;
+            border-radius: 18px 18px 4px 18px;
+            margin-left: auto;
+        }
+
+        .message.other .message-content {
+            background: white;
+            color: #202124;
+            border-radius: 18px 18px 18px 4px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: #5f6368;
+            margin-top: 4px;
+            opacity: 0.8;
+        }
+
+        .message.self .message-time {
+            text-align: right;
+            color: #202124;
+        }
+
+        .message-sender {
+            font-size: 13px;
+            margin-bottom: 4px;
+            color: #202124;
+            font-weight: 500;
+        }
+
+        .message.other .message-sender {
+            margin-left: 4px;
+        }
+
+        @keyframes fadeIn {
+            from { 
+                opacity: 0; 
+                transform: translateY(8px);
+            }
+            to { 
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        #inputArea {
+            padding: 16px 20px;
+            background: white;
+            border-top: 1px solid #dadce0;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        #messageInput {
+            flex: 1;
+            min-height: 44px;
+            max-height: 120px;
+            padding: 12px 20px;
+            border: 1px solid #dadce0;
+            border-radius: 22px;
+            font-size: 15px;
+            line-height: 20px;
+            transition: all 0.3s;
+            background: #f8f9fa;
+            resize: none;
+            overflow-y: auto;
+        }
+
+        #messageInput:focus {
+            border-color: #1a73e8;
+            background: white;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            outline: none;
+        }
+
+        #sendButton {
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            border-radius: 22px;
+            background: #1a73e8;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.3s;
+        }
+
+        #sendButton:hover {
+            background: #1557b0;
+            transform: scale(1.05);
+        }
+
+        #sendButton svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+    </style>
+</head>
+<body>
+    <div id="loginForm">
+        <h2>Welcome to Chat</h2>
+        <div class="input-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" placeholder="Enter your username" required>
+        </div>
+        <div class="input-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" placeholder="Enter your password" required>
+        </div>
+        <div class="button-group">
+            <button id="loginButton" class="primary">Login</button>
+            <button id="registerButton" class="secondary">Register</button>
+        </div>
+    </div>
+
+    <div id="chatInterface">
+        <div id="sidebar">
+            <h3>Chat Rooms</h3>
+            <div class="room-creation">
+                <h4>Create New Room</h4>
+                <input type="text" id="newRoomName" placeholder="Enter room name">
+                <button id="createRoomButton" class="primary">Create Room</button>
+            </div>
+            <div class="room-search">
+                <h4>Search Rooms</h4>
+                <input type="text" id="roomSearchInput" placeholder="Search rooms...">
+            </div>
+            <div id="roomList"></div>
+        </div>
+
+        <div id="mainContent">
+            <h3 id="currentRoom">Welcome to Chat</h3>
+            <div id="messages"></div>
+            <div id="inputArea">
+                <textarea id="messageInput" placeholder="Type a message..." rows="1"></textarea>
+                <button id="sendButton">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="chat.js"></script>
+</body>
+</html>
