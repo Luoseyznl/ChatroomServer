@@ -13,18 +13,29 @@ namespace {
 // 解析查询参数
 std::unordered_map<std::string, std::string> parseQueryParams(const std::string& path) {
     std::unordered_map<std::string, std::string> params;
+    LOG_INFO << "Parsing query params from path: " << path;
+    
     size_t pos = path.find('?');
     if (pos != std::string::npos) {
         std::string query = path.substr(pos + 1);
+        LOG_INFO << "Found query string: " << query;
+        
         std::stringstream ss(query);
         std::string pair;
         while (std::getline(ss, pair, '&')) {
+            LOG_INFO << "Processing pair: " << pair;
             size_t eq_pos = pair.find('=');
             if (eq_pos != std::string::npos) {
-                params[pair.substr(0, eq_pos)] = pair.substr(eq_pos + 1);
+                std::string key = pair.substr(0, eq_pos);
+                std::string value = pair.substr(eq_pos + 1);
+                LOG_INFO << "Found parameter: " << key << " = " << value;
+                params[key] = value;
             }
         }
+    } else {
+        LOG_WARN << "No query parameters found in path";
     }
+    
     return params;
 }
 } // namespace
@@ -219,6 +230,36 @@ void ChatApplication::setupRoutes() {
         }
     });
     
+    // 获取房间消息
+    http_server_->addHandler("/messages", "GET", [this](const http::HttpRequest& request) -> http::HttpResponse {
+        LOG_INFO << "Handling /messages request";
+        try {
+            LOG_INFO << "Request path: " << request.path;
+            LOG_INFO << "Query params: " << request.query_params.size();
+            
+            auto it = request.query_params.find("room");
+            if (it == request.query_params.end()) {
+                LOG_ERROR << "Missing room parameter in messages request";
+                return http::HttpResponse(400, "{\"error\":\"Missing room parameter\"}");
+            }
+            
+            std::string room_name = it->second;
+            LOG_INFO << "Fetching messages for room: " << room_name;
+            
+            auto room = chat_manager_->findRoom(room_name);
+            if (!room) {
+                LOG_WARN << "Room not found: " << room_name;
+                return http::HttpResponse(404, "{\"error\":\"Room not found\"}");
+            }
+            
+            json response = chat_manager_->getRoomMessages(room_name);
+            return http::HttpResponse(200, response.dump());
+        } catch (const std::exception& e) {
+            LOG_ERROR << "Error getting messages: " << e.what();
+            return http::HttpResponse(500, "{\"error\":\"Internal server error\"}");
+        }
+    });
+    
     // 发送消息
     http_server_->addHandler("/send_message", "POST", [this](const http::HttpRequest& request) -> http::HttpResponse {
         LOG_INFO << "Handling /send_message request";
@@ -252,32 +293,6 @@ void ChatApplication::setupRoutes() {
             return http::HttpResponse(400, "{\"error\":\"Invalid JSON format\"}");
         } catch (const std::exception& e) {
             LOG_ERROR << "Error sending message: " << e.what();
-            return http::HttpResponse(500, "{\"error\":\"Internal server error\"}");
-        }
-    });
-    
-    // 获取消息
-    http_server_->addHandler("/messages", "GET", [this](const http::HttpRequest& request) -> http::HttpResponse {
-        LOG_INFO << "Handling /messages request";
-        try {
-            auto params = parseQueryParams(request.path);
-            auto it = params.find("room");
-            if (it == params.end()) {
-                LOG_ERROR << "Missing room parameter in get messages request";
-                return http::HttpResponse(400, "{\"error\":\"Missing room parameter\"}");
-            }
-            
-            std::string room_name = it->second;
-            auto messages = chat_manager_->getRoomMessages(room_name);
-            
-            json response = json::array();
-            for (const auto& msg : messages) {
-                response.push_back(msg);
-            }
-            
-            return http::HttpResponse(200, response.dump());
-        } catch (const std::exception& e) {
-            LOG_ERROR << "Error getting messages: " << e.what();
             return http::HttpResponse(500, "{\"error\":\"Internal server error\"}");
         }
     });

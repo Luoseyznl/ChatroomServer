@@ -435,13 +435,36 @@
 
         // Poll for new messages
         async function pollMessages() {
-            if (!currentRoom) return;
+            if (!currentRoom) {
+                return;
+            }
             
             try {
-                const response = await fetch(`/messages?room=${currentRoom}`);
+                const response = await fetch(`/messages?room=${encodeURIComponent(currentRoom)}`);
                 if (response.ok) {
                     const messages = await response.json();
                     displayMessages(messages);
+                } else {
+                    const data = await response.json();
+                    if (data.error === 'Room not found' || data.error === 'Not in room') {
+                        // Reset room state
+                        currentRoom = null;
+                        localStorage.removeItem('currentRoom');
+                        
+                        const messageInput = document.getElementById('messageInput');
+                        const sendButton = document.getElementById('sendButton');
+                        const messagesDiv = document.getElementById('messages');
+                        
+                        messageInput.disabled = true;
+                        sendButton.disabled = true;
+                        messagesDiv.innerHTML = '';
+                        
+                        // Remove active room highlight
+                        const roomItems = document.querySelectorAll('.room-item');
+                        roomItems.forEach(item => item.classList.remove('active'));
+                        
+                        alert('You are no longer in this room. Please join again.');
+                    }
                 }
             } catch (error) {
                 console.error('Error polling messages:', error);
