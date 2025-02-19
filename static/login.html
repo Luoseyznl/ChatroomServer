@@ -102,19 +102,17 @@
                     body: JSON.stringify({ username, password })
                 });
                 
-                const data = await response.json();
-                
-                if (response.ok) {
-                    // Store credentials for auto-login
-                    localStorage.setItem('username', username);
-                    localStorage.setItem('password', password);
-                    
-                    // Redirect to chat page
-                    window.location.href = '/chat.html';
-                } else {
-                    errorMessage.textContent = data.error || 'Login failed';
-                    errorMessage.style.display = 'block';
-                }
+                response.json()
+                .then(data => {
+                    if (data.status === 'success') {
+                        // 使用sessionStorage存储用户信息
+                        sessionStorage.setItem('username', username);
+                        sessionStorage.setItem('password', password);
+                        window.location.href = '/chat.html';
+                    } else {
+                        alert('登录失败：' + data.message);
+                    }
+                })
             } catch (error) {
                 errorMessage.textContent = 'Network error occurred';
                 errorMessage.style.display = 'block';

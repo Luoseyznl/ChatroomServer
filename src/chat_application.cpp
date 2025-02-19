@@ -1,121 +1,128 @@
 #include "chat_application.hpp"
 #include "utils/logger.hpp"
-#include <filesystem>
-#include <chrono>
-#include <thread>
-#include <sstream>
 #include <fstream>
+#include <sys/stat.h>
+#include <string.h>
+#include <errno.h>
+#include <chrono>
+#include <nlohmann/json.hpp>
 
-using namespace std;
 using json = nlohmann::json;
-
-namespace {
-// 解析查询参数
-std::unordered_map<std::string, std::string> parseQueryParams(const std::string& path) {
-    std::unordered_map<std::string, std::string> params;
-    LOG_INFO << "Parsing query params from path: " << path;
-    
-    size_t pos = path.find('?');
-    if (pos != std::string::npos) {
-        std::string query = path.substr(pos + 1);
-        LOG_INFO << "Found query string: " << query;
-        
-        std::stringstream ss(query);
-        std::string pair;
-        while (std::getline(ss, pair, '&')) {
-            LOG_INFO << "Processing pair: " << pair;
-            size_t eq_pos = pair.find('=');
-            if (eq_pos != std::string::npos) {
-                std::string key = pair.substr(0, eq_pos);
-                std::string value = pair.substr(eq_pos + 1);
-                LOG_INFO << "Found parameter: " << key << " = " << value;
-                params[key] = value;
-            }
-        }
-    } else {
-        LOG_WARN << "No query parameters found in path";
-    }
-    
-    return params;
-}
-} // namespace
 
 ChatApplication::ChatApplication(const std::string& static_dir)
     : static_dir_(static_dir)
     , http_server_(nullptr)
-    , user_manager_(std::make_shared<UserManager>()) 
-    , chat_manager_(std::make_shared<chat::ChatManager>(user_manager_)) {
+    , user_manager_(std::make_shared<UserManager>())
+    , chat_manager_(std::make_shared<chat::ChatManager>())
+{
+    // 移除这里的 setupRoutes 调用，因为 http_server_ 还是 nullptr
 }
 
 void ChatApplication::start(int port) {
-    LOG_INFO << "Starting chat application on port " << port;
-    http_server_ = std::make_shared<http::HttpServer>(port);
+    LOG_INFO << "Creating HTTP server on port " << port;
+    http_server_ = std::make_unique<http::HttpServer>(port);
+    
+    LOG_INFO << "Setting up routes";
     setupRoutes();
+    
+    LOG_INFO << "Starting HTTP server";
     http_server_->run();
 }
 
 void ChatApplication::stop() {
-    LOG_INFO << "Stopping chat application";
     if (http_server_) {
         http_server_->stop();
     }
 }
 
 void ChatApplication::setupRoutes() {
-    // 主页重定向到登录页
+    // 静态文件处理
     http_server_->addHandler("/", "GET", [this](const http::HttpRequest& request) -> http::HttpResponse {
-        http::HttpResponse response(302);
-        response.headers["Location"] = "/login.html";
-        return response;
+        return serveStaticFile("/index.html");
     });
     
-    // 用户注册
+    // 处理注册请求
     http_server_->addHandler("/register", "POST", [this](const http::HttpRequest& request) -> http::HttpResponse {
-        return handleRegister(request);
-    });
-    
-    // 用户登录
-    http_server_->addHandler("/login", "POST", [this](const http::HttpRequest& request) -> http::HttpResponse {
-        auto data = json::parse(request.body);
-        std::string username = data["username"];
-        std::string password = data["password"];
-        
-        if (user_manager_->loginUser(username, password)) {
-            LOG_INFO << "User logged in: " << username;
-            return http::HttpResponse(200, "{\"message\":\"Login successful\"}");
-        }
-        
-        LOG_WARN << "Login failed for user: " << username;
-        return http::HttpResponse(401, "{\"error\":\"Invalid credentials\"}");
-    });
-    
-    // 自动登录
-    http_server_->addHandler("/auto_login", "POST", [this](const http::HttpRequest& request) -> http::HttpResponse {
-        LOG_INFO << "Handling /auto_login request";
         try {
-            auto data = json::parse(request.body);
+            json data = json::parse(request.body);
             
             if (!data.contains("username") || !data.contains("password")) {
-                LOG_ERROR << "Missing required fields in auto login request";
+                LOG_ERROR << "Missing username or password in register request";
                 return http::HttpResponse(400, "{\"error\":\"Missing username or password\"}");
             }
             
             std::string username = data["username"];
             std::string password = data["password"];
             
-            if (user_manager_->verifyCredentials(username, password)) {
-                LOG_INFO << "Auto login successful for user: " << username;
-                return http::HttpResponse(200, "{\"message\":\"Auto login successful\"}");
+            if (user_manager_->registerUser(username, password)) {
+                LOG_INFO << "User registered: " << username;
+                return http::HttpResponse(200, "{\"status\":\"success\"}");
             } else {
-                LOG_WARN << "Auto login failed for user: " << username;
-                return http::HttpResponse(401, "{\"error\":\"Invalid credentials\"}");
+                LOG_WARN << "Failed to register user: " << username;
+                return http::HttpResponse(400, "{\"error\":\"Username already exists\"}");
             }
         } catch (const json::exception& e) {
-            LOG_ERROR << "Invalid JSON format in auto login request: " << e.what();
-            return http::HttpResponse(400, "{\"error\":\"Invalid JSON format\"}");
-        } catch (const std::exception& e) {
-            LOG_ERROR << "Error in auto login request: " << e.what();
-            return http::HttpResponse(500, "{\"error\":\"Internal server error\"}");
+            LOG_ERROR << "JSON parse error: " << e.what();
+            return http::HttpResponse(400, "{\"error\":\"Invalid JSON\"}");
+        }
+    });
+    
+    // 处理登录请求
+    http_server_->addHandler("/login", "POST", [this](const http::HttpRequest& request) -> http::HttpResponse {
+         try {
+                json data = json::parse(request.body);
+                
+                if (!data.contains("username") || !data.contains("password")) {
+                    LOG_ERROR << "Missing username or password in login request";
+                    return http::HttpResponse(400, "{\"error\":\"Missing username or password\"}");
+                }
+                
+                std::string username = data["username"];
+                std::string password = data["password"];
+                
+                if (user_manager_->loginUser(username, password)) {
+                    LOG_INFO << "User logged in: " << username;
+                    json response = {
+                        {"status", "success"},
+                        {"username", username}
+                    };
+                    return http::HttpResponse(200, response.dump());
+                } else {
+                    LOG_WARN << "Failed to log in user: " << username;
+                    return http::HttpResponse(401, "{\"error\":\"Invalid username or password\"}");
+                }
+            } catch (const json::exception& e) {
+                LOG_ERROR << "JSON parse error: " << e.what();
+                return http::HttpResponse(400, "{\"error\":\"Invalid JSON\"}");
+            }
+    });
+    
+    // 自动登录
+    http_server_->addHandler("/auto_login", "POST", [this](const http::HttpRequest& request) -> http::HttpResponse {
+        try {
+            json data = json::parse(request.body);
+            LOG_DEBUG << "Auto login request: " << data.dump();
+            
+            if (!data.contains("username")) {
+                LOG_ERROR << "Missing username in auto login request";
+                return http::HttpResponse(400, "{\"error\":\"Missing username\"}");
+            }
+            
+            std::string username = data["username"];
+            if (user_manager_->userExists(username)) {
+                LOG_INFO << "Auto login successful for user: " << username;
+                json response = {
+                    {"status", "success"},
+                    {"username", username}
+                };
+                return http::HttpResponse(200, response.dump());
+            } else {
+                LOG_WARN << "Auto login failed: user not found: " << username;
+                return http::HttpResponse(401, "{\"error\":\"User not found\"}");
+            }
+        } catch (const json::exception& e) {
+            LOG_ERROR << "JSON parse error in auto login: " << e.what();
+            return http::HttpResponse(400, "{\"error\":\"Invalid JSON\"}");
         }
     });
     
@@ -123,11 +130,10 @@ void ChatApplication::setupRoutes() {
     http_server_->addHandler("/create_room", "POST", [this](const http::HttpRequest& request) -> http::HttpResponse {
         LOG_INFO << "Handling /create_room request";
         try {
-            auto data = json::parse(request.body);
-            LOG_DEBUG << "Parsed request body: " << data.dump();
+            json data = json::parse(request.body);
             
             if (!data.contains("name") || !data.contains("creator")) {
-                LOG_ERROR << "Missing required fields in create room request";
+                LOG_ERROR << "Missing room name or creator in create room request";
                 return http::HttpResponse(400, "{\"error\":\"Missing room name or creator\"}");
             }
             
@@ -135,26 +141,15 @@ void ChatApplication::setupRoutes() {
             std::string creator = data["creator"];
             
             if (chat_manager_->createRoom(room_name, creator)) {
-                LOG_INFO << "Successfully created room '" << room_name << "'";
-                
-                // 返回完整的房间信息，包括消息历史
-                json response = {
-                    {"message", "Room created successfully"},
-                    {"room", room_name},
-                    {"creator", creator},
-                    {"messages", chat_manager_->getRoomMessages(room_name)}
-                };
-                return http::HttpResponse(200, response.dump());
+                LOG_INFO << "Created room: " << room_name;
+                return http::HttpResponse(200, "{\"status\":\"success\"}");
             } else {
-                LOG_WARN << "Failed to create room '" << room_name << "' (already exists)";
-                return http::HttpResponse(409, "{\"error\":\"Room already exists\"}");
+                LOG_WARN << "Failed to create room: " << room_name;
+                return http::HttpResponse(400, "{\"error\":\"Room already exists\"}");
             }
         } catch (const json::exception& e) {
-            LOG_ERROR << "Invalid JSON format: " << e.what();
-            return http::HttpResponse(400, "{\"error\":\"Invalid JSON format\"}");
-        } catch (const std::exception& e) {
-            LOG_ERROR << "Error creating room: " << e.what();
-            return http::HttpResponse(500, "{\"error\":\"Internal server error\"}");
+            LOG_ERROR << "JSON parse error: " << e.what();
+            return http::HttpResponse(400, "{\"error\":\"Invalid JSON\"}");
         }
     });
     
@@ -162,181 +157,191 @@ void ChatApplication::setupRoutes() {
     http_server_->addHandler("/join_room", "POST", [this](const http::HttpRequest& request) -> http::HttpResponse {
         LOG_INFO << "Handling /join_room request";
         try {
-            auto data = json::parse(request.body);
-            LOG_DEBUG << "Parsed request body: " << data.dump();
+            json data = json::parse(request.body);
+            LOG_DEBUG << "Join room request data: " << data.dump();
             
             if (!data.contains("room") || !data.contains("username")) {
-                LOG_ERROR << "Missing required fields in join room request";
-                return http::HttpResponse(400, "{\"error\":\"Missing room name or username\"}");
+                LOG_ERROR << "Missing room or username in join room request";
+                return http::HttpResponse(400, "{\"error\":\"Missing room or username\"}");
             }
             
             std::string room_name = data["room"];
             std::string username = data["username"];
             
-            auto room = chat_manager_->findRoom(room_name);
-            if (!room) {
-                LOG_WARN << "Room not found: " << room_name;
-                return http::HttpResponse(404, "{\"error\":\"Room not found\"}");
-            }
-            
             if (chat_manager_->joinRoom(room_name, username)) {
-                LOG_INFO << "User '" << username << "' successfully joined room '" << room_name << "'";
-                json response = {
-                    {"message", "Successfully joined room"},
-                    {"room", room_name},
-                    {"messages", chat_manager_->getRoomMessages(room_name)}
-                };
-                return http::HttpResponse(200, response.dump());
+                LOG_INFO << "User " << username << " joined room: " << room_name;
+                return http::HttpResponse(200, "{\"status\":\"success\"}");
             } else {
-                LOG_INFO << "User '" << username << "' is already in room '" << room_name << "'";
-                json response = {
-                    {"message", "Already in room"},
-                    {"room", room_name},
-                    {"messages", chat_manager_->getRoomMessages(room_name)}
-                };
-                return http::HttpResponse(200, response.dump());
+                LOG_WARN << "Failed to join room: " << room_name << " for user: " << username;
+                return http::HttpResponse(404, "{\"error\":\"Room not found\"}");
             }
         } catch (const json::exception& e) {
-            LOG_ERROR << "Invalid JSON format: " << e.what();
-            return http::HttpResponse(400, "{\"error\":\"Invalid JSON format\"}");
-        } catch (const std::exception& e) {
-            LOG_ERROR << "Error joining room: " << e.what();
-            return http::HttpResponse(500, "{\"error\":\"Internal server error\"}");
+            LOG_ERROR << "JSON parse error: " << e.what();
+            return http::HttpResponse(400, "{\"error\":\"Invalid JSON\"}");
         }
     });
     
-    // 获取聊天室列表
+    // 获取房间列表
     http_server_->addHandler("/rooms", "GET", [this](const http::HttpRequest& request) -> http::HttpResponse {
         LOG_INFO << "Handling /rooms request";
-        try {
-            auto rooms = chat_manager_->getRoomList();
-            json response = json::array();
-            for (const auto& room_name : rooms) {
-                auto room = chat_manager_->findRoom(room_name);
-                if (room) {
-                    json room_info = {
-                        {"name", room_name},
-                        {"creator", room->getCreator()},
-                        {"members", room->getMembers()},
-                        {"message_count", room->getMessages().size()}
-                    };
-                    response.push_back(room_info);
-                }
-            }
-            return http::HttpResponse(200, response.dump());
-        } catch (const std::exception& e) {
-            LOG_ERROR << "Error getting room list: " << e.what();
-            return http::HttpResponse(500, "{\"error\":\"Internal server error\"}");
+        auto rooms = chat_manager_->getRooms();
+        json response = json::array();
+        for (const auto& room : rooms) {
+            json room_info = {
+                {"name", room},
+                {"members", chat_manager_->getRoomMembers(room)}
+            };
+            response.push_back(room_info);
         }
+        LOG_DEBUG << "Found " << rooms.size() << " rooms: " << response.dump();
+        return http::HttpResponse(200, response.dump());
     });
     
-    // 获取房间消息
-    http_server_->addHandler("/messages", "GET", [this](const http::HttpRequest& request) -> http::HttpResponse {
-        LOG_INFO << "Handling /messages request";
-        try {
-            LOG_INFO << "Request path: " << request.path;
-            LOG_INFO << "Query params: " << request.query_params.size();
-            
-            auto it = request.query_params.find("room");
-            if (it == request.query_params.end()) {
-                LOG_ERROR << "Missing room parameter in messages request";
-                return http::HttpResponse(400, "{\"error\":\"Missing room parameter\"}");
-            }
-            
-            std::string room_name = it->second;
-            LOG_INFO << "Fetching messages for room: " << room_name;
-            
-            auto room = chat_manager_->findRoom(room_name);
-            if (!room) {
-                LOG_WARN << "Room not found: " << room_name;
-                return http::HttpResponse(404, "{\"error\":\"Room not found\"}");
-            }
-            
-            json response = chat_manager_->getRoomMessages(room_name);
-            return http::HttpResponse(200, response.dump());
-        } catch (const std::exception& e) {
-            LOG_ERROR << "Error getting messages: " << e.what();
-            return http::HttpResponse(500, "{\"error\":\"Internal server error\"}");
-        }
-    });
-    
-    // 发送消息
+    // 处理发送消息请求
     http_server_->addHandler("/send_message", "POST", [this](const http::HttpRequest& request) -> http::HttpResponse {
         LOG_INFO << "Handling /send_message request";
         try {
-            auto data = json::parse(request.body);
-            LOG_DEBUG << "Parsed request body: " << data.dump();
+            json data = json::parse(request.body);
+            LOG_DEBUG << "Message data: " << data.dump();
             
-            if (!data.contains("room") || !data.contains("sender") || !data.contains("content")) {
+            if (!data.contains("room") || !data.contains("username") || !data.contains("content")) {
                 LOG_ERROR << "Missing required fields in send message request";
-                return http::HttpResponse(400, "{\"error\":\"Missing room, sender or content\"}");
+                return http::HttpResponse(400, "{\"error\":\"Missing room, username or content\"}");
             }
             
             std::string room_name = data["room"];
-            std::string sender = data["sender"];
-            std::string content = data["content"];
+            std::string username = data["username"];
+            json content = data["content"];
             
-            if (chat_manager_->sendMessage(room_name, sender, content)) {
-                LOG_INFO << "Message sent to room '" << room_name << "' by '" << sender << "'";
-                json response = {
-                    {"message", "Message sent successfully"},
-                    {"room", room_name},
-                    {"messages", chat_manager_->getRoomMessages(room_name)}
-                };
-                return http::HttpResponse(200, response.dump());
+            if (!chat_manager_->isUserInRoom(room_name, username)) {
+                LOG_WARN << "User " << username << " is not in room " << room_name;
+                return http::HttpResponse(403, "{\"error\":\"User is not in the room\"}");
+            }
+            
+            if (chat_manager_->sendMessage(room_name, username, content)) {
+                LOG_INFO << "Message sent in room " << room_name << " by " << username;
+                return http::HttpResponse(200, "{\"status\":\"success\"}");
             } else {
-                LOG_WARN << "Failed to send message to room '" << room_name << "'";
-                return http::HttpResponse(404, "{\"error\":\"Not in room\"}");
+                LOG_WARN << "Failed to send message in room " << room_name;
+                return http::HttpResponse(500, "{\"error\":\"Failed to send message\"}");
             }
         } catch (const json::exception& e) {
-            LOG_ERROR << "Invalid JSON format: " << e.what();
-            return http::HttpResponse(400, "{\"error\":\"Invalid JSON format\"}");
-        } catch (const std::exception& e) {
-            LOG_ERROR << "Error sending message: " << e.what();
-            return http::HttpResponse(500, "{\"error\":\"Internal server error\"}");
+            LOG_ERROR << "JSON parse error: " << e.what();
+            return http::HttpResponse(400, "{\"error\":\"Invalid JSON\"}");
         }
     });
     
-    // index.html 处理
-    http_server_->addHandler("/index.html", "GET", [this](const http::HttpRequest& request) -> http::HttpResponse {
-        std::string file_path = static_dir_ + "/index.html";
-        if (std::filesystem::exists(file_path)) {
-            std::ifstream file(file_path);
-            std::stringstream buffer;
-            buffer << file.rdbuf();
-            file.close();
-            return http::HttpResponse(200, buffer.str());
-        } else {
-            return http::HttpResponse(404, "{\"error\":\"File not found\"}");
+    // 获取新消息
+    http_server_->addHandler("/messages", "POST", [this](const http::HttpRequest& request) -> http::HttpResponse {
+        LOG_INFO << "Handling /messages request";
+        try {
+            json data = json::parse(request.body);
+            LOG_DEBUG << "Get messages request data: " << data.dump();
+            
+            if (!data.contains("room") || !data.contains("username")) {
+                LOG_ERROR << "Missing room or username in get messages request";
+                return http::HttpResponse(400, "{\"error\":\"Missing room or username\"}");
+            }
+            
+            std::string room_name = data["room"];
+            std::string username = data["username"];
+            int64_t since = data.value("since", 0);  // 获取时间戳，默认为0
+            
+            if (!chat_manager_->isUserInRoom(room_name, username)) {
+                LOG_WARN << "User " << username << " is not in room " << room_name;
+                return http::HttpResponse(403, "{\"error\":\"User is not in the room\"}");
+            }
+            
+            auto messages = chat_manager_->getNewMessages(room_name, username);
+            
+            // 过滤消息
+            json filtered_messages = json::array();
+            for (const auto& msg : messages) {
+                if (msg["timestamp"].get<int64_t>() > since) {
+                    filtered_messages.push_back(msg);
+                }
+            }
+            
+            LOG_DEBUG << "Found " << filtered_messages.size() << " new messages for user " << username 
+                     << " in room " << room_name << " since " << since;
+            
+            return http::HttpResponse(200, filtered_messages.dump());
+        } catch (const json::exception& e) {
+            LOG_ERROR << "JSON parse error: " << e.what();
+            return http::HttpResponse(400, "{\"error\":\"Invalid JSON\"}");
+        }
+    });
+    
+    // 获取用户列表
+    http_server_->addHandler("/users", "GET", [this](const http::HttpRequest& request) -> http::HttpResponse {
+        LOG_INFO << "Handling /users request";
+        try {
+            auto users = user_manager_->getAllUsers();
+            json response = json::array();
+            
+            LOG_INFO << "Found " << users.size() << " users";
+            
+            for (const auto& user : users) {
+                json user_info = {
+                    {"username", user.username}
+                };
+                response.push_back(user_info);
+            }
+            
+            std::string response_str = response.dump();
+            LOG_INFO << "Response: " << response_str;
+            
+            return http::HttpResponse(200, response_str);
+        } catch (const std::exception& e) {
+            LOG_ERROR << "Error getting user list: " << e.what();
+            return http::HttpResponse(500, "{\"error\":\"Internal server error\"}");
         }
     });
 }
 
-http::HttpResponse ChatApplication::handleRegister(const http::HttpRequest& request) {
-    LOG_DEBUG << "Handling register request with body: " << request.body;
+
+http::HttpResponse ChatApplication::serveStaticFile(const std::string& path) {
+    std::string full_path = static_dir_ + path;
     
-    try {
-        auto json = nlohmann::json::parse(request.body);
-        std::string username = json["username"];
-        std::string password = json["password"];
-        
-        LOG_INFO << "Registering user: " << username;
-        
-        if (user_manager_->registerUser(username, password)) {
-            LOG_INFO << "User registered successfully: " << username;
-            auto response = http::HttpResponse(200, "{\"status\":\"success\",\"message\":\"User registered successfully\"}");
-            LOG_DEBUG << "Sending response: " << response.toString();
-            return response;
-        } else {
-            LOG_WARN << "Failed to register user: " << username;
-            auto response = http::HttpResponse(400, "{\"status\":\"error\",\"message\":\"Username already exists\"}");
-            LOG_DEBUG << "Sending response: " << response.toString();
-            return response;
+    struct stat st;
+    if (stat(full_path.c_str(), &st) == -1) {
+        if (errno == ENOENT) {
+            LOG_WARN << "File not found: " << full_path;
+            return http::HttpResponse(404, "File not found");
         }
-    } catch (const std::exception& e) {
-        LOG_ERROR << "Failed to parse register request: " << e.what();
-        auto response = http::HttpResponse(400, "{\"status\":\"error\",\"message\":\"Invalid request format\"}");
-        LOG_DEBUG << "Sending response: " << response.toString();
-        return response;
+        LOG_ERROR << "Failed to check file: " << full_path << ", error: " << strerror(errno);
+        return http::HttpResponse(500, "Internal server error");
     }
+    
+    std::ifstream file(full_path, std::ios::binary);
+    if (!file) {
+        LOG_ERROR << "Failed to open file: " << full_path;
+        return http::HttpResponse(500, "Failed to open file");
+    }
+    
+    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    
+    // 根据文件扩展名设置 Content-Type
+    std::string content_type = "text/plain";
+    size_t dot_pos = path.find_last_of('.');
+    if (dot_pos != std::string::npos) {
+        std::string ext = path.substr(dot_pos);
+        if (ext == ".html") {
+            content_type = "text/html";
+        } else if (ext == ".css") {
+            content_type = "text/css";
+        } else if (ext == ".js") {
+            content_type = "application/javascript";
+        } else if (ext == ".json") {
+            content_type = "application/json";
+        } else if (ext == ".png") {
+            content_type = "image/png";
+        } else if (ext == ".jpg" || ext == ".jpeg") {
+            content_type = "image/jpeg";
+        }
+    }
+    
+    http::HttpResponse response(200, content);
+    response.headers["Content-Type"] = content_type;
+    return response;
 }

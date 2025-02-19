@@ -8,7 +8,9 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
-#include <filesystem>
+#include <sys/stat.h>
+#include <string.h>
+#include <errno.h>
 
 namespace http {
 
@@ -116,6 +118,9 @@ void HttpServer::handleClient(int client_fd) {
                 response = HttpResponse(405, "{\"status\":\"error\",\"message\":\"Method not allowed\"}");
                 LOG_WARN << "Method not allowed: " << request.method << " " << request.path;
             }
+
+            LOG_DEBUG << "Sending response:\n" << response.toString();
+
         } else if (request.path == "/" || request.path.find('.') != std::string::npos) {
             // Serve static files
             std::string path = request.path == "/" ? "/index.html" : request.path;
@@ -133,7 +138,6 @@ void HttpServer::handleClient(int client_fd) {
         response.headers["Access-Control-Allow-Headers"] = "Content-Type";
         
         std::string response_str = response.toString();
-        LOG_DEBUG << "Sending response:\n" << response_str;
         
         ssize_t total_bytes_written = 0;
         const char* data = response_str.c_str();
@@ -161,8 +165,8 @@ void HttpServer::handleClient(int client_fd) {
 }
 
 void HttpServer::serveStaticFile(const std::string& path, HttpResponse& response) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
+    struct stat sb;
+    if (stat(path.c_str(), &sb) != 0) {
         LOG_ERROR << "File not found: " << path;
         response = HttpResponse(404, "File not found");
         return;
@@ -203,6 +207,13 @@ void HttpServer::serveStaticFile(const std::string& path, HttpResponse& response
     }
     
     // Read file content
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        LOG_ERROR << "Failed to open file: " << path;
+        response = HttpResponse(500, "Internal Server Error");
+        return;
+    }
+    
     std::stringstream buffer;
     buffer << file.rdbuf();
     response.status_code = 200;

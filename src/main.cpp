@@ -5,8 +5,9 @@
 int main() {
     try {
         // Use port 8080 for both HTTP and WebSocket
-        ChatApplication app("static");
         LOG_INFO << "Chat server starting...";
+
+        ChatApplication app("static");
         LOG_INFO << "Server listening on port 8080";
         app.start(8080);
     } catch (const std::exception& e) {

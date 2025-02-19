@@ -3,76 +3,83 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-#include <chrono>
-#include <iomanip>
+#include <ctime>
 #include <thread>
+#include <iomanip>
+
+namespace utils {
 
 // ANSI escape codes for colors
 struct Color {
     static constexpr const char* RESET   = "\033[0m";
-    static constexpr const char* BLACK   = "\033[30m";
     static constexpr const char* RED     = "\033[31m";
     static constexpr const char* GREEN   = "\033[32m";
     static constexpr const char* YELLOW  = "\033[33m";
     static constexpr const char* BLUE    = "\033[34m";
     static constexpr const char* MAGENTA = "\033[35m";
     static constexpr const char* CYAN    = "\033[36m";
-    static constexpr const char* WHITE   = "\033[37m";
     static constexpr const char* BOLD    = "\033[1m";
 };
 
 enum class LogLevel {
-    DEBUG,
-    INFO,
-    WARN,
-    ERROR
+    DEBUG = 0,
+    INFO = 1,
+    WARN = 2,
+    ERROR = 3,
+    FATAL = 4
 };
 
 class Logger {
 public:
-    static Logger& getInstance() {
-        static Logger instance;
-        return instance;
-    }
-
     class LogStream {
     public:
         LogStream(LogLevel level, const char* file, const char* function, int line) 
-            : level_(level), file_(getFileName(file)), function_(function), line_(line) {}
+            : level_(level), file_(getFileName(file)), function_(function), line_(line) {
+            if (level_ >= Logger::getGlobalLevel()) {
+                // 添加时间戳
+                auto now = std::time(nullptr);
+                auto* timeinfo = std::localtime(&now);
+                char buffer[80];
+                std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
+                
+                stream_ << Color::CYAN << "[" << buffer << "] "
+                       << getLevelColor(level_) << Color::BOLD << "[" << getLevelStr(level_) << "] "
+                       << Color::MAGENTA << "[Thread-" << std::this_thread::get_id() << "] "
+                       << Color::BLUE << "[" << file_ << ":" << line_ << "] "
+                       << Color::CYAN << "[" << function_ << "] "
+                       << getLevelColor(level_);
+            }
+        }
         
         ~LogStream() {
-            auto now = std::chrono::system_clock::now();
-            auto time = std::chrono::system_clock::to_time_t(now);
-            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                now.time_since_epoch()) % 1000;
-
-            std::stringstream ss;
-            ss << Color::CYAN << "["
-               << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S")
-               << "." << std::setfill('0') << std::setw(3) << ms.count() << "] "
-               << getLevelColorString(level_)
-               << Color::MAGENTA << "[Thread-" << std::this_thread::get_id() << "] "
-               << Color::BLUE << "[" << file_ << ":" << line_ << "] "
-               << Color::CYAN << "[" << function_ << "] "
-               << getLevelColor(level_) << buffer_.str()
-               << Color::RESET << std::endl;
-
-            std::cout << ss.str();
+            if (level_ >= Logger::getGlobalLevel()) {
+                stream_ << Color::RESET << std::endl;
+                std::cout << stream_.str();
+                std::cout.flush();
+                
+                // 如果是错误或致命错误，也输出到 stderr
+                if (level_ >= LogLevel::ERROR) {
+                    std::cerr << stream_.str();
+                    std::cerr.flush();
+                }
+            }
         }
-
+        
         template<typename T>
-        LogStream& operator<<(const T& value) {
-            buffer_ << value;
+        LogStream& operator<<(const T& val) {
+            if (level_ >= Logger::getGlobalLevel()) {
+                stream_ << val;
+            }
             return *this;
         }
-
+        
     private:
+        std::ostringstream stream_;
         LogLevel level_;
         const char* file_;
         const char* function_;
         int line_;
-        std::stringstream buffer_;
-
+        
         static const char* getFileName(const char* filePath) {
             const char* fileName = filePath;
             for (const char* p = filePath; *p; ++p) {
@@ -82,59 +89,70 @@ public:
             }
             return fileName;
         }
-
-        static const char* getLevelColor(LogLevel level) {
-            switch (level) {
-                case LogLevel::DEBUG: return Color::WHITE;
-                case LogLevel::INFO:  return Color::GREEN;
-                case LogLevel::WARN:  return Color::YELLOW;
-                case LogLevel::ERROR: return Color::RED;
-                default:              return Color::RESET;
-            }
-        }
-
-        static std::string getLevelColorString(LogLevel level) {
-            const char* color = getLevelColor(level);
-            const char* levelStr = getLevelString(level);
-            std::stringstream ss;
-            ss << color << Color::BOLD << "[" << levelStr << "] ";
-            return ss.str();
-        }
-
-        static const char* getLevelString(LogLevel level) {
+        
+        static const char* getLevelStr(LogLevel level) {
             switch (level) {
                 case LogLevel::DEBUG: return "DEBUG";
                 case LogLevel::INFO:  return "INFO ";
                 case LogLevel::WARN:  return "WARN ";
                 case LogLevel::ERROR: return "ERROR";
+                case LogLevel::FATAL: return "FATAL";
                 default:              return "UNKNOWN";
             }
         }
+        
+        static const char* getLevelColor(LogLevel level) {
+            switch (level) {
+                case LogLevel::DEBUG: return Color::RESET;
+                case LogLevel::INFO:  return Color::GREEN;
+                case LogLevel::WARN:  return Color::YELLOW;
+                case LogLevel::ERROR: return Color::RED;
+                case LogLevel::FATAL: return Color::RED;
+                default:              return Color::RESET;
+            }
+        }
     };
-
-    static LogStream debug(const char* file, const char* function, int line) {
+    
+    static void setGlobalLevel(LogLevel level) {
+        globalLevel_ = level;
+    }
+    
+    static LogLevel getGlobalLevel() {
+        return globalLevel_;
+    }
+    
+    static LogStream Debug(const char* file, const char* function, int line) {
         return LogStream(LogLevel::DEBUG, file, function, line);
     }
-
-    static LogStream info(const char* file, const char* function, int line) {
+    
+    static LogStream Info(const char* file, const char* function, int line) {
         return LogStream(LogLevel::INFO, file, function, line);
     }
-
-    static LogStream warn(const char* file, const char* function, int line) {
+    
+    static LogStream Warn(const char* file, const char* function, int line) {
         return LogStream(LogLevel::WARN, file, function, line);
     }
-
-    static LogStream error(const char* file, const char* function, int line) {
+    
+    static LogStream Error(const char* file, const char* function, int line) {
         return LogStream(LogLevel::ERROR, file, function, line);
     }
-
+    
+    static LogStream Fatal(const char* file, const char* function, int line) {
+        return LogStream(LogLevel::FATAL, file, function, line);
+    }
+    
 private:
-    Logger() = default;
-    Logger(const Logger&) = delete;
-    Logger& operator=(const Logger&) = delete;
+    static LogLevel globalLevel_;
 };
 
-#define LOG_DEBUG Logger::getInstance().debug(__FILE__, __FUNCTION__, __LINE__)
-#define LOG_INFO  Logger::getInstance().info(__FILE__, __FUNCTION__, __LINE__)
-#define LOG_WARN  Logger::getInstance().warn(__FILE__, __FUNCTION__, __LINE__)
-#define LOG_ERROR Logger::getInstance().error(__FILE__, __FUNCTION__, __LINE__)
+// 在 .cpp 文件中初始化
+inline LogLevel Logger::globalLevel_ = LogLevel::DEBUG;
+
+} // namespace utils
+
+// 定义便捷宏
+#define LOG_DEBUG utils::Logger::Debug(__FILE__, __FUNCTION__, __LINE__)
+#define LOG_INFO  utils::Logger::Info(__FILE__, __FUNCTION__, __LINE__)
+#define LOG_WARN  utils::Logger::Warn(__FILE__, __FUNCTION__, __LINE__)
+#define LOG_ERROR utils::Logger::Error(__FILE__, __FUNCTION__, __LINE__)
+#define LOG_FATAL utils::Logger::Fatal(__FILE__, __FUNCTION__, __LINE__)

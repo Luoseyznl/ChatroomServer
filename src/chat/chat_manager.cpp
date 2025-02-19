@@ -1,92 +1,95 @@
 #include "chat_manager.hpp"
 #include "../utils/logger.hpp"
 #include <nlohmann/json.hpp>
-#include <filesystem>
+#include <unistd.h>
+#include <libgen.h>
+#include <string.h>
+#include <errno.h>
+#include <chrono>
 #include <fstream>
 #include <sstream>
 #include <algorithm>
 
 namespace chat {
 
-ChatManager::ChatManager(std::shared_ptr<UserManager> user_manager)
-    : user_manager_(user_manager) {
-    LOG_INFO << "Initializing ChatManager";
-}
-
 bool ChatManager::createRoom(const std::string& name, const std::string& creator) {
-    LOG_INFO << "Creating room: " << name << " by " << creator;
-    
     std::lock_guard<std::mutex> lock(mutex_);
-    
-    if (!user_manager_->isUserRegistered(creator)) {
-        LOG_WARN << "User '" << creator << "' is not registered";
-        return false;
-    }
-    
-    // Check if room already exists
     if (rooms_.find(name) != rooms_.end()) {
-        LOG_WARN << "Room '" << name << "' already exists";
         return false;
     }
     
-    // Create new room
-    rooms_[name] = std::make_shared<ChatRoom>(name, creator);
-    LOG_INFO << "Created room '" << name << "' by user '" << creator << "'";
+    rooms_[name] = std::vector<nlohmann::json>();
+    room_members_[name] = std::unordered_set<std::string>{creator};
     return true;
 }
 
 bool ChatManager::joinRoom(const std::string& room_name, const std::string& username) {
-    LOG_INFO << "Joining room: " << room_name << " for user: " << username;
-    
     std::lock_guard<std::mutex> lock(mutex_);
-    
-    if (!user_manager_->isUserRegistered(username)) {
-        LOG_WARN << "User '" << username << "' is not registered";
+    auto it = room_members_.find(room_name);
+    if (it == room_members_.end()) {
         return false;
     }
     
-    auto it = rooms_.find(room_name);
-    if (it == rooms_.end()) {
-        LOG_WARN << "Room '" << room_name << "' not found";
-        return false;
-    }
-    
-    return it->second->addMember(username);
+    it->second.insert(username);
+    return true;
 }
 
-std::vector<std::string> ChatManager::getRoomList() const {
+bool ChatManager::leaveRoom(const std::string& room_name, const std::string& username) {
     std::lock_guard<std::mutex> lock(mutex_);
-    
-    std::vector<std::string> room_list;
-    for (const auto& [name, room] : rooms_) {
-        room_list.push_back(name);
+    auto it = room_members_.find(room_name);
+    if (it == room_members_.end()) {
+        return false;
     }
     
-    return room_list;
+    it->second.erase(username);
+    return true;
 }
 
-bool ChatManager::sendMessage(const std::string& room_name, const std::string& sender, const std::string& content) {
+bool ChatManager::sendMessage(const std::string& room_name, const std::string& username, const nlohmann::json& content) {
     std::lock_guard<std::mutex> lock(mutex_);
     
-    if (!user_manager_->isUserRegistered(sender)) {
-        LOG_WARN << "User '" << sender << "' is not registered";
+    auto room_it = rooms_.find(room_name);
+    if (room_it == rooms_.end()) {
+        LOG_ERROR << "Room not found: " << room_name;
         return false;
     }
     
-    auto it = rooms_.find(room_name);
-    if (it == rooms_.end()) {
-        LOG_WARN << "Room '" << room_name << "' not found";
+    // 检查发送者是否在房间中
+    auto members_it = room_members_.find(room_name);
+    if (members_it == room_members_.end() || members_it->second.find(username) == members_it->second.end()) {
+        LOG_ERROR << "Sender not in room: " << username << " in " << room_name;
         return false;
     }
+    
+    // 使用服务器时间作为时间戳
+    auto now = std::chrono::system_clock::now();
+    auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()
+    ).count();
     
     nlohmann::json message = {
-        {"sender", sender},
+        {"room", room_name},
+        {"username", username},
         {"content", content},
-        {"timestamp", std::chrono::system_clock::now().time_since_epoch().count()}
+        {"timestamp", timestamp}
     };
     
-    it->second->addMessage(message);
+    room_it->second.push_back(message);
+    LOG_INFO << "Message sent in room " << room_name << " by " << username;
     return true;
+}
+
+std::vector<nlohmann::json> ChatManager::getNewMessages(const std::string& room_name, const std::string& username) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    auto room_it = rooms_.find(room_name);
+    if (room_it == rooms_.end()) {
+        LOG_ERROR << "Room not found: " << room_name;
+        return {};
+    }
+    
+    // 返回所有消息，后续可以添加消息 ID 或时间戳来只返回新消息
+    return room_it->second;
 }
 
 std::vector<nlohmann::json> ChatManager::getRoomMessages(const std::string& room_name) const {
@@ -94,38 +97,44 @@ std::vector<nlohmann::json> ChatManager::getRoomMessages(const std::string& room
     
     auto it = rooms_.find(room_name);
     if (it == rooms_.end()) {
-        return {};
+        return std::vector<nlohmann::json>();
     }
     
-    return it->second->getMessages();
+    return it->second;
 }
 
-std::vector<nlohmann::json> ChatManager::getNewMessages(const std::string& room_name, const std::string& username) {
+std::vector<std::string> ChatManager::getRooms() const {
     std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::string> room_names;
+    room_names.reserve(rooms_.size());
     
-    auto it = rooms_.find(room_name);
-    if (it == rooms_.end()) {
-        return {};
+    for (const auto& [name, _] : rooms_) {
+        room_names.push_back(name);
     }
     
-    auto& room = it->second;
-    auto& messages = room->getMessages();
-    auto& last_position = user_message_positions_[room_name][username];
-    
-    if (last_position >= messages.size()) {
-        return {};
-    }
-    
-    std::vector<nlohmann::json> new_messages(messages.begin() + last_position, messages.end());
-    last_position = messages.size();
-    
-    return new_messages;
+    return room_names;
 }
 
-std::shared_ptr<ChatRoom> ChatManager::findRoom(const std::string& name) const {
+std::vector<std::string> ChatManager::getRoomMembers(const std::string& room_name) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = rooms_.find(name);
-    return it != rooms_.end() ? it->second : nullptr;
+    
+    auto it = room_members_.find(room_name);
+    if (it == room_members_.end()) {
+        return std::vector<std::string>();
+    }
+    
+    return std::vector<std::string>(it->second.begin(), it->second.end());
+}
+
+bool ChatManager::isUserInRoom(const std::string& room_name, const std::string& username) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    auto it = room_members_.find(room_name);
+    if (it == room_members_.end()) {
+        return false;
+    }
+    
+    return it->second.find(username) != it->second.end();
 }
 
 } // namespace chat

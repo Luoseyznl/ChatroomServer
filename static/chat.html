@@ -1,401 +1,672 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>Chat Room</title>
     <style>
+        /* 基础样式 */
         body {
-            font-family: Arial, sans-serif;
             margin: 0;
-            padding: 20px;
-            background-color: #f0f2f5;
-            height: 100vh;
-            box-sizing: border-box;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f7f7f7;
         }
+
         .container {
             display: flex;
-            gap: 20px;
-            height: calc(100vh - 40px);
-            margin: 0 auto;
+            height: 100vh;
         }
+
+        /* 侧边栏样式 */
         .sidebar {
-            flex: 0 0 300px;
-            background: white;
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            width: 240px;
+            background-color: white;
+            border-right: 1px solid #e8e8e8;
             display: flex;
             flex-direction: column;
-            height: 100%;
-            box-sizing: border-box;
         }
-        .main-content {
-            flex: 1;
-            background: white;
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        
+        .room-section, .user-section {
+            padding: 12px;
+            border-bottom: 1px solid #e8e8e8;
+        }
+
+        .section-header {
             display: flex;
-            flex-direction: column;
-            height: 100%;
-            box-sizing: border-box;
-            min-width: 0; /* 防止内容溢出 */
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
         }
-        .room-list {
-            list-style: none;
-            padding: 0;
+        
+        .section-header h2 {
             margin: 0;
-            flex: 1;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .list {
             overflow-y: auto;
         }
-        .room-item {
-            padding: 12px 16px;
-            margin: 5px 0;
-            background: #f0f2f5;
-            border-radius: 8px;
+        
+        .room-item, .user-item {
+            display: flex;
+            align-items: center;
+            padding: 6px 8px;
+            margin-bottom: 2px;
+            border-radius: 4px;
             cursor: pointer;
-            transition: all 0.2s ease;
+            font-size: 13px;
         }
-        .room-item:hover {
-            background: #e4e6eb;
-            transform: translateY(-1px);
+        
+        .room-item:hover, .user-item:hover {
+            background-color: #f5f5f5;
         }
-        .room-item.active {
-            background: #1877f2;
+        
+        .user-icon {
+            min-width: 24px;
+            height: 24px;
+            padding: 0 6px;
+            border-radius: 12px;
+            background-color: #1890ff;
             color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 6px;
+            font-size: 12px;
+        }
+
+        .room-icon, .user-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #fff;
+        }
+
+        .room-icon {
+            background-color: #1890ff;
+        }
+
+        .room-name, .user-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .create-room {
+            padding: 12px;
+            border-top: 1px solid #f0f0f0;
+        }
+
+        .create-room input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .create-room input:focus {
+            border-color: #1890ff;
+        }
+
+        .create-room button {
+            width: 100%;
+        }
+
+        /* 主聊天区域样式 */
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #fff;
+        }
+
+        .chat-header {
+            padding: 16px;
+            border-bottom: 1px solid #e6e6e6;
+            font-size: 16px;
             font-weight: 500;
         }
+
         .messages {
             flex: 1;
             overflow-y: auto;
-            margin-bottom: 20px;
-            padding: 10px;
-            display: flex;
-            flex-direction: column;
+            padding: 20px;
+            background-color: #f7f7f7;
         }
+
+        /* 消息样式 */
         .message {
-            margin: 10px 0;
-            padding: 12px 16px;
-            background: #f0f2f5;
-            border-radius: 18px;
+            margin: 10px;
             max-width: 70%;
-            align-self: flex-start;
+            clear: both;
         }
+        
         .message.sent {
-            align-self: flex-end;
-            background: #0084ff;
+            float: right;
+        }
+        
+        .message-info {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        
+        .sent .message-info {
+            text-align: right;
+        }
+        
+        .message-sender {
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        
+        .message-time {
+            color: #999;
+        }
+        
+        .message-bubble {
+            padding: 10px 15px;
+            border-radius: 15px;
+            background-color: #f0f0f0;
+            word-wrap: break-word;
+        }
+        
+        .sent .message-bubble {
+            background-color: #007AFF;
             color: white;
         }
-        .message .sender {
-            font-weight: bold;
-            margin-bottom: 5px;
-            font-size: 0.9em;
-        }
-        .message .content {
-            margin: 5px 0;
-            line-height: 1.4;
-        }
-        .message .time {
-            font-size: 0.8em;
-            color: #65676b;
-            margin-top: 5px;
-        }
-        .message.sent .time {
-            color: rgba(255, 255, 255, 0.7);
-        }
+
+        /* 输入区域样式 */
         .input-area {
+            padding: 16px;
+            background-color: #fff;
+            border-top: 1px solid #e6e6e6;
             display: flex;
-            gap: 10px;
-            padding: 10px;
-            background: #f0f2f5;
-            border-radius: 8px;
+            gap: 12px;
         }
+
         input[type="text"] {
             flex: 1;
-            padding: 12px 16px;
-            border: 1px solid #ddd;
-            border-radius: 20px;
-            font-size: 15px;
-            transition: all 0.2s ease;
-        }
-        input[type="text"]:focus {
+            padding: 8px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 8px;
+            font-size: 14px;
             outline: none;
-            border-color: #1877f2;
-            box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.2);
+            transition: border-color 0.2s;
         }
+
+        input[type="text"]:focus {
+            border-color: #1890ff;
+        }
+
         button {
-            padding: 12px 24px;
-            background: #1877f2;
-            color: white;
+            padding: 8px 16px;
             border: none;
-            border-radius: 20px;
+            border-radius: 8px;
+            background-color: #1890ff;
+            color: #fff;
+            font-size: 14px;
             cursor: pointer;
-            font-weight: 500;
-            transition: all 0.2s ease;
+            transition: background-color 0.2s;
         }
+
         button:hover {
-            background: #166fe5;
-            transform: translateY(-1px);
+            background-color: #40a9ff;
         }
+
         button:disabled {
-            background: #e4e6eb;
-            color: #bcc0c4;
+            background-color: #d9d9d9;
             cursor: not-allowed;
-            transform: none;
         }
-        .create-room {
+
+        /* 成员数量样式 */
+        .member-count {
+            font-size: 12px;
+            color: #8c8c8c;
+            margin-left: auto;
+            padding-left: 8px;
+        }
+
+        /* 用户列表样式 */
+        .user-section {
+            flex: 1;
+            border-top: 1px solid #e8e8e8;
+            padding: 16px;
+            overflow-y: auto;
+        }
+        
+        .user-item {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            margin-bottom: 4px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        
+        .user-item:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .user-icon {
+            min-width: 32px;
+            height: 32px;
+            padding: 0 8px;
+            border-radius: 16px;
+            background-color: #1890ff;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 8px;
+            font-size: 14px;
+        }
+        
+        .user-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* 模态框样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+        }
+        
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 20px;
         }
-        #createRoomForm {
+        
+        .modal-header h2 {
+            margin: 0;
+        }
+        
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover {
+            color: black;
+        }
+        
+        .modal-body {
+            margin-bottom: 20px;
+        }
+        
+        .modal-body input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        
+        .modal-footer {
             display: flex;
+            justify-content: flex-end;
             gap: 10px;
         }
-        #createRoomForm input {
-            flex: 1;
+        
+        .modal-footer button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
         }
-        h3 {
-            margin: 0 0 15px 0;
-            color: #1c1e21;
+        
+        .modal-footer button:first-child {
+            background-color: #1890ff;
+            color: white;
+        }
+        
+        .modal-footer button:last-child {
+            background-color: #f5f5f5;
+            color: #666;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="sidebar">
-            <div class="create-room">
-                <form id="createRoomForm">
-                    <input type="text" id="roomName" placeholder="Room name" required>
-                    <button type="submit">Create</button>
-                </form>
+            <div class="room-section">
+                <div class="section-header">
+                    <h2>聊天室 (<span id="roomCount">0</span>)</h2>
+                    <button onclick="document.getElementById('createRoomModal').style.display='block'">创建</button>
+                </div>
+                <div id="roomList" class="list"></div>
             </div>
-            <h3>Chat Rooms</h3>
-            <ul id="roomList" class="room-list"></ul>
+            <div class="user-section">
+                <div class="section-header">
+                    <h2>在线用户 (<span id="userCount">0</span>)</h2>
+                </div>
+                <div id="userList" class="list"></div>
+            </div>
         </div>
-        <div class="main-content">
-            <div id="messages" class="messages"></div>
+        <div class="chat-area">
+            <div class="chat-header">Chat</div>
+            <div class="messages" id="messages"></div>
             <div class="input-area">
-                <input type="text" id="messageInput" placeholder="Type a message...">
-                <button id="sendButton">Send</button>
+                <input type="text" id="messageInput" placeholder="Type your message..." disabled>
+                <button id="sendButton" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 创建房间模态框 -->
+    <div id="createRoomModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>创建聊天室</h2>
+                <span class="close" onclick="document.getElementById('createRoomModal').style.display='none'">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="roomName" placeholder="请输入房间名称">
+            </div>
+            <div class="modal-footer">
+                <button onclick="createRoom()">创建</button>
+                <button onclick="document.getElementById('createRoomModal').style.display='none'">取消</button>
             </div>
         </div>
     </div>
 
     <script>
         let currentRoom = null;
-        let username = localStorage.getItem('username');
-        let password = localStorage.getItem('password');
+        let username = sessionStorage.getItem('username');
+        let password = sessionStorage.getItem('password');
+        let lastMessageTime = 0;  
 
         if (!username || !password) {
             window.location.href = '/login.html';
         }
 
-        // Auto login
-        async function autoLogin() {
-            try {
-                const response = await fetch('/auto_login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ username, password })
-                });
-                
-                if (!response.ok) {
-                    window.location.href = '/login.html';
-                }
-            } catch (error) {
-                console.error('Auto login failed:', error);
-                window.location.href = '/login.html';
-            }
-        }
-
         // Create room
-        document.getElementById('createRoomForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const roomName = document.getElementById('roomName').value;
+        function createRoom() {
+            const roomName = document.getElementById('roomName').value.trim();
+            if (!roomName) {
+                alert('请输入房间名称');
+                return;
+            }
             
-            try {
-                const response = await fetch('/create_room', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ name: roomName, creator: username })
-                });
-                
-                if (response.ok) {
+            fetch('/create_room', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: roomName,
+                    creator: username
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to create room');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    document.getElementById('createRoomModal').style.display = 'none';
                     document.getElementById('roomName').value = '';
                     loadRooms();
-                } else {
-                    const data = await response.json();
-                    alert(data.error || 'Failed to create room');
                 }
-            } catch (error) {
+            })
+            .catch(error => {
                 console.error('Error creating room:', error);
-                alert('Failed to create room');
-            }
-        });
-
-        // Load rooms and check current room status
-        async function loadRooms() {
-            try {
-                const response = await fetch('/rooms');
-                const rooms = await response.json();
-                
-                const roomList = document.getElementById('roomList');
-                roomList.innerHTML = '';
-                
-                rooms.forEach(room => {
-                    const li = document.createElement('li');
-                    li.className = 'room-item';
-                    li.textContent = room.name;
-                    
-                    // 检查是否是当前房间
-                    if (currentRoom === room.name) {
-                        li.classList.add('active');
-                    }
-                    
-                    li.onclick = () => joinRoom(room.name);
-                    roomList.appendChild(li);
-                });
-            } catch (error) {
-                console.error('Error loading rooms:', error);
-            }
+                alert('创建房间失败');
+            });
         }
 
         // Join room
-        async function joinRoom(roomName) {
+        function joinRoom(roomName) {
             if (currentRoom === roomName) {
-                return; // Already in this room
+                return;
             }
-
-            const messageInput = document.getElementById('messageInput');
-            const sendButton = document.getElementById('sendButton');
-            const messagesDiv = document.getElementById('messages');
             
-            try {
-                const response = await fetch('/join_room', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ room: roomName, username })
-                });
-                
+            return fetch('/join_room', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    room: roomName,
+                    username: username
+                })
+            })
+            .then(response => {
                 if (response.ok) {
-                    const data = await response.json();
-                    
-                    // Update room state
+                    // 更新当前房间
                     currentRoom = roomName;
-                    localStorage.setItem('currentRoom', roomName);
                     
-                    // Update UI
+                    // 更新房间列表中的活动状态
                     const roomItems = document.querySelectorAll('.room-item');
                     roomItems.forEach(item => {
                         item.classList.remove('active');
-                        if (item.textContent === roomName) {
+                        const roomNameElement = item.querySelector('.room-name');
+                        if (roomNameElement && roomNameElement.textContent === roomName) {
                             item.classList.add('active');
                         }
                     });
                     
-                    // Enable and clear message input
+                    // 清空消息列表
+                    const messagesDiv = document.getElementById('messages');
+                    messagesDiv.innerHTML = '';
+                    
+                    // 启用输入框
+                    const messageInput = document.getElementById('messageInput');
+                    const sendButton = document.getElementById('sendButton');
                     messageInput.disabled = false;
                     sendButton.disabled = false;
-                    messageInput.value = '';
                     messageInput.focus();
                     
-                    // Clear and load messages
-                    messagesDiv.innerHTML = '';
-                    if (data.messages) {
-                        displayMessages(data.messages);
-                    }
+                    // 更新房间标题
+                    document.querySelector('.chat-header').textContent = roomName;
                     
-                    if (data.message === "Already in room") {
-                        console.log(`Already in room: ${roomName}`);
-                    }
+                    // 加载房间消息
+                    return loadMessages();
                 } else {
-                    const data = await response.json();
-                    currentRoom = null;
-                    localStorage.removeItem('currentRoom');
-                    messageInput.disabled = true;
-                    sendButton.disabled = true;
-                    messagesDiv.innerHTML = '';
-                    alert(data.error || 'Failed to join room');
+                    return response.json().then(error => {
+                        throw new Error(error.error || 'Failed to join room');
+                    });
                 }
-            } catch (error) {
+            })
+            .catch(error => {
                 console.error('Error joining room:', error);
-                currentRoom = null;
-                localStorage.removeItem('currentRoom');
-                messageInput.disabled = true;
-                sendButton.disabled = true;
-                messagesDiv.innerHTML = '';
-                alert('Failed to join room');
+                alert(error.message || 'Failed to join room');
+            });
+        }
+
+        // Load rooms
+        function loadRooms() {
+            return fetch('/rooms')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch rooms');
+                    }
+                    return response.json();
+                })
+                .then(rooms => {
+                    const roomList = document.getElementById('roomList');
+                    const roomCount = document.getElementById('roomCount');
+                    roomList.innerHTML = '';
+                    roomCount.textContent = rooms.length;
+                    
+                    rooms.forEach(room => {
+                        const div = document.createElement('div');
+                        div.className = 'room-item';
+                        if (currentRoom === room.name) {
+                            div.classList.add('active');
+                        }
+                        
+                        const icon = document.createElement('div');
+                        icon.className = 'room-icon';
+                        icon.textContent = room.name.charAt(0).toUpperCase();
+                        
+                        const name = document.createElement('div');
+                        name.className = 'room-name';
+                        name.textContent = room.name;
+                        
+                        // 显示房间成员数量
+                        const memberCount = document.createElement('div');
+                        memberCount.className = 'member-count';
+                        memberCount.textContent = room.members.length + ' 人';
+                        
+                        div.appendChild(icon);
+                        div.appendChild(name);
+                        div.appendChild(memberCount);
+                        div.onclick = () => joinRoom(room.name);
+                        
+                        roomList.appendChild(div);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading rooms:', error);
+                });
+        }
+
+        // Load messages
+        function loadMessages() {
+            if (!currentRoom) {
+                return Promise.resolve();
             }
+            
+            return fetch('/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    room: currentRoom,
+                    username: username,
+                    since: lastMessageTime
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to fetch messages');
+                }
+                return response.json();
+            })
+            .then(messages => {
+                if (messages && messages.length > 0) {
+                    // 更新最后一条消息的时间戳
+                    lastMessageTime = Math.max(...messages.map(msg => new Date(msg.timestamp).getTime()));
+                }
+                displayMessages(messages);
+            })
+            .catch(error => {
+                console.error('Error loading messages:', error);
+            });
+        }
+
+        // Poll messages
+        function pollMessages() {
+            if (!currentRoom) {
+                return;
+            }
+            
+            fetch('/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    room: currentRoom,
+                    username: username,
+                    since: lastMessageTime
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to fetch messages');
+                }
+                return response.json();
+            })
+            .then(messages => {
+                if (messages && messages.length > 0) {
+                    const messagesDiv = document.getElementById('messages');
+                    const wasAtBottom = messagesDiv.scrollHeight - messagesDiv.scrollTop === messagesDiv.clientHeight;
+                    
+                    // 更新最后一条消息的时间戳
+                    lastMessageTime = Math.max(...messages.map(msg => new Date(msg.timestamp).getTime()));
+                    
+                    displayMessages(messages);
+                    
+                    // 如果之前在底部，保持在底部
+                    if (wasAtBottom) {
+                        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error polling messages:', error);
+            });
         }
 
         // Send message
-        async function sendMessage() {
+        function sendMessage() {
             const messageInput = document.getElementById('messageInput');
-            const sendButton = document.getElementById('sendButton');
-            const messagesDiv = document.getElementById('messages');
-            
             const message = messageInput.value.trim();
             
-            if (!message) {
+            if (!message || !currentRoom) {
                 return;
             }
             
-            // Check if we're in a room
-            if (!currentRoom) {
-                alert('Please join a room first');
-                messageInput.disabled = true;
-                sendButton.disabled = true;
-                return;
-            }
-            
-            try {
-                const response = await fetch('/send_message', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        room: currentRoom,
-                        sender: username,
-                        content: message
-                    })
-                });
-                
+            fetch('/send_message', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    room: currentRoom,
+                    username: username,
+                    content: message
+                })
+            })
+            .then(response => {
                 if (response.ok) {
-                    const data = await response.json();
                     messageInput.value = '';
-                    
-                    // Update messages if they're included in the response
-                    if (data.messages) {
-                        displayMessages(data.messages);
-                    }
+                    messageInput.focus();
+                    return loadMessages();
                 } else {
-                    const data = await response.json();
-                    if (data.error === 'Not in room') {
-                        // Reset room state
-                        currentRoom = null;
-                        localStorage.removeItem('currentRoom');
-                        messageInput.disabled = true;
-                        sendButton.disabled = true;
-                        messagesDiv.innerHTML = '';
-                        
-                        // Remove active room highlight
-                        const roomItems = document.querySelectorAll('.room-item');
-                        roomItems.forEach(item => item.classList.remove('active'));
-                        
-                        alert('You are no longer in this room. Please join again.');
-                    } else {
-                        alert(data.error || 'Failed to send message');
-                    }
+                    return response.json().then(error => {
+                        throw new Error(error.error || 'Failed to send message');
+                    });
                 }
-            } catch (error) {
+            })
+            .catch(error => {
                 console.error('Error sending message:', error);
-                alert('Failed to send message');
-            }
+                alert(error.message || 'Failed to send message');
+            });
         }
 
         // Display messages
@@ -403,132 +674,102 @@
             const messagesDiv = document.getElementById('messages');
             messagesDiv.innerHTML = '';
             
-            messages.forEach(msg => {
+            messages.forEach(message => {
                 const messageDiv = document.createElement('div');
                 messageDiv.className = 'message';
-                if (msg.sender === username) {
+                const isSentByMe = message.username === username;
+                if (isSentByMe) {
                     messageDiv.classList.add('sent');
                 }
                 
-                const senderDiv = document.createElement('div');
-                senderDiv.className = 'sender';
-                senderDiv.textContent = msg.sender;
+                const messageInfo = document.createElement('div');
+                messageInfo.className = 'message-info';
                 
-                const contentDiv = document.createElement('div');
-                contentDiv.className = 'content';
-                contentDiv.textContent = msg.content;
+                const sender = document.createElement('span');
+                sender.className = 'message-sender';
+                sender.textContent = isSentByMe ? '我' : message.username;
                 
-                const timeDiv = document.createElement('div');
-                timeDiv.className = 'time';
-                timeDiv.textContent = new Date(msg.timestamp).toLocaleString();
+                const time = document.createElement('span');
+                time.className = 'message-time';
+                const date = new Date(message.timestamp);
+                const now = new Date();
                 
-                messageDiv.appendChild(senderDiv);
-                messageDiv.appendChild(contentDiv);
-                messageDiv.appendChild(timeDiv);
+                if (date.toDateString() === now.toDateString()) {
+                    time.textContent = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                } else {
+                    time.textContent = date.toLocaleString([], {
+                        month: 'numeric',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                }
                 
+                messageInfo.appendChild(sender);
+                messageInfo.appendChild(time);
+                
+                const bubble = document.createElement('div');
+                bubble.className = 'message-bubble';
+                bubble.textContent = message.content;
+                
+                messageDiv.appendChild(messageInfo);
+                messageDiv.appendChild(bubble);
                 messagesDiv.appendChild(messageDiv);
             });
-            
-            // Scroll to bottom
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        // Poll for new messages
-        async function pollMessages() {
-            if (!currentRoom) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/messages?room=${encodeURIComponent(currentRoom)}`);
-                if (response.ok) {
-                    const messages = await response.json();
-                    displayMessages(messages);
-                } else {
-                    const data = await response.json();
-                    if (data.error === 'Room not found' || data.error === 'Not in room') {
-                        // Reset room state
-                        currentRoom = null;
-                        localStorage.removeItem('currentRoom');
+        // Load users
+        function loadUsers() {
+            fetch('/users')
+                .then(response => response.json())
+                .then(users => {
+                    const userList = document.getElementById('userList');
+                    const userCount = document.getElementById('userCount');
+                    userList.innerHTML = '';
+                    userCount.textContent = users.length;
+                    
+                    users.forEach(user => {
+                        const div = document.createElement('div');
+                        div.className = 'user-item';
                         
-                        const messageInput = document.getElementById('messageInput');
-                        const sendButton = document.getElementById('sendButton');
-                        const messagesDiv = document.getElementById('messages');
+                        const icon = document.createElement('div');
+                        icon.className = 'user-icon';
+                        icon.textContent = user.username.charAt(0).toUpperCase();
                         
-                        messageInput.disabled = true;
-                        sendButton.disabled = true;
-                        messagesDiv.innerHTML = '';
+                        const name = document.createElement('div');
+                        name.className = 'user-name';
+                        name.textContent = user.username === username ? user.username + ' (我)' : user.username;
+                        if (user.username === username) {
+                            name.style.fontWeight = 'bold';
+                        }
                         
-                        // Remove active room highlight
-                        const roomItems = document.querySelectorAll('.room-item');
-                        roomItems.forEach(item => item.classList.remove('active'));
-                        
-                        alert('You are no longer in this room. Please join again.');
-                    }
-                }
-            } catch (error) {
-                console.error('Error polling messages:', error);
+                        div.appendChild(icon);
+                        div.appendChild(name);
+                        userList.appendChild(div);
+                    });
+                })
+                .catch(error => console.error('Error loading users:', error));
+        }
+
+        // Handle enter key
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
             }
         }
 
         // Initialize
-        async function initialize() {
-            try {
-                // Get DOM elements
-                const messageInput = document.getElementById('messageInput');
-                const sendButton = document.getElementById('sendButton');
-                const messagesDiv = document.getElementById('messages');
-                
-                // Setup event listeners
-                sendButton.addEventListener('click', sendMessage);
-                messageInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        sendMessage();
-                    }
-                });
-
-                // Auto login
-                await autoLogin();
-                
-                // Load rooms first
-                await loadRooms();
-                
-                // Check for saved room
-                const storedRoom = localStorage.getItem('currentRoom');
-                if (storedRoom) {
-                    // Try to join the saved room
-                    try {
-                        await joinRoom(storedRoom);
-                    } catch (error) {
-                        console.error('Failed to join saved room:', error);
-                        localStorage.removeItem('currentRoom');
-                        currentRoom = null;
-                    }
-                }
-                
-                // Set initial input state
-                if (currentRoom) {
-                    messageInput.disabled = false;
-                    sendButton.disabled = false;
-                } else {
-                    messageInput.disabled = true;
-                    sendButton.disabled = true;
-                    messagesDiv.innerHTML = '';
-                }
-                
-                // Start polling
-                setInterval(pollMessages, 1000);
-                setInterval(loadRooms, 5000);
-            } catch (error) {
-                console.error('Initialization error:', error);
-                alert('Failed to initialize chat. Please refresh the page.');
-            }
-        }
-
-        // Start the application
-        initialize().catch(error => {
-            console.error('Fatal error:', error);
-            alert('Failed to start chat. Please refresh the page.');
+        document.addEventListener('DOMContentLoaded', () => {
+            const messageInput = document.getElementById('messageInput');
+            messageInput.addEventListener('keypress', handleKeyPress);
+            
+            // Start polling
+            loadRooms();
+            loadUsers();
+            setInterval(loadRooms, 5000);
+            setInterval(loadUsers, 5000);
+            setInterval(pollMessages, 5000);
         });
     </script>
 </body>
