@@ -3,12 +3,13 @@
 #include "http/http_server.hpp"
 #include "user/user_manager.hpp"
 #include "chat/chat_manager.hpp"
+#include "db/database_manager.hpp"
 #include <memory>
 #include <string>
 
 class ChatApplication {
 public:
-    explicit ChatApplication(const std::string& static_dir);
+    ChatApplication(const std::string& static_dir);
     
     void start(int port);
     void stop();
@@ -22,4 +23,5 @@ private:
     std::unique_ptr<http::HttpServer> http_server_;
     std::shared_ptr<UserManager> user_manager_;
     std::shared_ptr<chat::ChatManager> chat_manager_;
+    std::shared_ptr<DatabaseManager> db_manager_;
 };

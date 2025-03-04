@@ -10,6 +10,7 @@ set(SOURCES
     chat/user.cpp
     user/user_manager.cpp
     utils/thread_pool.cpp
+    db/database_manager.cpp
 )
 
 add_executable(chat_server ${SOURCES})
@@ -23,6 +24,7 @@ target_include_directories(chat_server PRIVATE
 # Link libraries
 target_link_libraries(chat_server PRIVATE
     Threads::Threads
+    SQLite::SQLite3
 )
 
 # 安装目标

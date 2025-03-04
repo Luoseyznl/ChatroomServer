@@ -13,10 +13,8 @@ A real-time chat system implemented with C++ backend and web frontend.
 ## Dependencies
 - C++17 or higher
 - CMake 3.10 or higher
-- Crow (C++ web framework)
-- Websocketpp (WebSocket library)
 - nlohmann/json (JSON for Modern C++)
-- Boost
+- sqlite3
 
 ## Project Structure
 ```
