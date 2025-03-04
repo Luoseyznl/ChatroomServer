@@ -691,7 +691,7 @@
                 
                 const time = document.createElement('span');
                 time.className = 'message-time';
-                const date = new Date(message.timestamp);
+                const date = new Date(message.timestamp /1000);
                 const now = new Date();
                 
                 if (date.toDateString() === now.toDateString()) {
