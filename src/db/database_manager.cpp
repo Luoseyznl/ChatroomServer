@@ -28,7 +28,9 @@ bool DatabaseManager::initializeTables() {
         "CREATE TABLE IF NOT EXISTS users ("
         "username TEXT PRIMARY KEY,"
         "password_hash TEXT NOT NULL,"
-        "created_at INTEGER NOT NULL);";
+        "created_at INTEGER NOT NULL,"
+        "is_online INTEGER DEFAULT 0,"
+        "last_active_time INTEGER DEFAULT 0);";
 
     // Rooms table
     const char* create_rooms_table = 
@@ -253,10 +255,41 @@ std::vector<nlohmann::json> DatabaseManager::getMessages(const std::string& room
     return messages;
 }
 
+bool DatabaseManager::setUserOnlineStatus(const std::string& username, bool is_online) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::stringstream ss;
+    ss << "UPDATE users SET is_online = " << (is_online ? 1 : 0);
+    if (is_online) {
+        ss << ", last_active_time = " << std::chrono::system_clock::now().time_since_epoch().count();
+    }
+    ss << " WHERE username = '" << username << "';";
+    return executeQuery(ss.str());
+}
+
+bool DatabaseManager::updateUserLastActiveTime(const std::string& username) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::stringstream ss;
+    ss << "UPDATE users SET last_active_time = " 
+       << std::chrono::system_clock::now().time_since_epoch().count()
+       << " WHERE username = '" << username << "';";
+    return executeQuery(ss.str());
+}
+
+bool DatabaseManager::checkAndUpdateInactiveUsers(int64_t timeout_ms) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    int64_t current_time = std::chrono::system_clock::now().time_since_epoch().count();
+    int64_t timeout_time = current_time - timeout_ms;
+    
+    std::stringstream ss;
+    ss << "UPDATE users SET is_online = 0 WHERE is_online = 1 AND "
+       << "last_active_time < " << timeout_time << ";";
+    return executeQuery(ss.str());
+}
+
 std::vector<User> DatabaseManager::getAllUsers() {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     std::vector<User> users;
-    const char* query = "SELECT username, password_hash FROM users;";
+    const char* query = "SELECT username, password_hash, is_online FROM users;";
     sqlite3_stmt* stmt;
     
     if (sqlite3_prepare_v2(db_, query, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -267,7 +300,8 @@ std::vector<User> DatabaseManager::getAllUsers() {
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         const char* username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
         const char* password = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-        users.push_back({std::string(username), std::string(password)});
+        bool is_online = sqlite3_column_int(stmt, 2) > 0;
+        users.push_back({std::string(username), std::string(password), is_online});
     }
     
     sqlite3_finalize(stmt);

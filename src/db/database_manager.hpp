@@ -17,6 +17,9 @@ public:
     bool createUser(const std::string& username, const std::string& password_hash);
     bool validateUser(const std::string& username, const std::string& password_hash);
     bool userExists(const std::string& username);
+    bool setUserOnlineStatus(const std::string& username, bool is_online);
+    bool updateUserLastActiveTime(const std::string& username);
+    bool checkAndUpdateInactiveUsers(int64_t timeout_ms);
     std::vector<User> getAllUsers();
     
     // Room operations

@@ -10,6 +10,7 @@ class User {
 public:
     std::string username;
     std::string password;
+    bool is_online = false;
 };
 
 class UserManager {

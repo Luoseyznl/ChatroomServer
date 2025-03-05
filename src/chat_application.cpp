@@ -12,8 +12,8 @@ using json = nlohmann::json;
 ChatApplication::ChatApplication(const std::string& static_dir)
     : static_dir_(static_dir)
     , http_server_(nullptr)
-    , user_manager_(std::make_shared<UserManager>())
-    , chat_manager_(std::make_shared<chat::ChatManager>())
+    // , user_manager_(std::make_shared<UserManager>())
+    // , chat_manager_(std::make_shared<chat::ChatManager>())
     , db_manager_(std::make_shared<DatabaseManager>("chat.db"))
 {
 }
@@ -87,6 +87,8 @@ void ChatApplication::setupRoutes() {
             
             if (db_manager_->validateUser(username, password)) {
                 LOG_INFO << "User logged in: " << username;
+                db_manager_->setUserOnlineStatus(username, true);
+                db_manager_->updateUserLastActiveTime(username);
                 json response = {
                     {"status", "success"},
                     {"username", username}
@@ -242,6 +244,10 @@ void ChatApplication::setupRoutes() {
             int64_t since = data["since"];
             
             auto messages = db_manager_->getMessages(room_name, since);
+            // 更新用户最后活动时间
+            if (data.contains("username")) {
+                db_manager_->updateUserLastActiveTime(data["username"]);
+            }
             return http::HttpResponse(200, json(messages).dump());
         } catch (const json::exception& e) {
             LOG_ERROR << "JSON parse error: " << e.what();
@@ -260,7 +266,8 @@ void ChatApplication::setupRoutes() {
             
             for (const auto& user : users) {
                 json user_info = {
-                    {"username", user.username}
+                    {"username", user.username},
+                    {"is_online", user.is_online}
                 };
                 response.push_back(user_info);
             }
@@ -272,6 +279,31 @@ void ChatApplication::setupRoutes() {
         } catch (const std::exception& e) {
             LOG_ERROR << "Error getting user list: " << e.what();
             return http::HttpResponse(500, "{\"error\":\"Internal server error\"}");
+        }
+    });
+
+    // 处理登出请求
+    http_server_->addHandler("/logout", "POST", [this](const http::HttpRequest& request) -> http::HttpResponse {
+        try {
+            json data = json::parse(request.body);
+            
+            if (!data.contains("username")) {
+                LOG_ERROR << "Missing username in logout request";
+                return http::HttpResponse(400, "{\"error\":\"Missing username\"}");
+            }
+            
+            std::string username = data["username"];
+            
+            if (db_manager_->setUserOnlineStatus(username, false)) {
+                LOG_INFO << "User logged out: " << username;
+                return http::HttpResponse(200, "{\"status\":\"success\"}");
+            } else {
+                LOG_ERROR << "Failed to logout user: " << username;
+                return http::HttpResponse(500, "{\"error\":\"Internal server error\"}");
+            }
+        } catch (const json::exception& e) {
+            LOG_ERROR << "JSON parse error in logout: " << e.what();
+            return http::HttpResponse(400, "{\"error\":\"Invalid JSON\"}");
         }
     });
 }
