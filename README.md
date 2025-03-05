@@ -23,7 +23,6 @@ A real-time chat system implemented with C++ backend and web frontend.
 ├── include/               # Header files
 ├── static/               # Static web files (HTML, CSS, JS)
 ├── build/                # Build directory
-├── data/                 # Data storage directory
 └── CMakeLists.txt       # CMake configuration
 ```
 
@@ -45,6 +44,7 @@ make
 
 4. Run the server:
 ```bash
+# cd build/bin
 ./chat_server
 ```
 
