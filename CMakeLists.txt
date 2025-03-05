@@ -29,17 +29,4 @@ set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}")
 add_subdirectory(src)
 
 # Copy static files to build directory
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/static DESTINATION ${CMAKE_BINARY_DIR})
-
-# Create data directory in build
-file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/data)
-
-# 安装静态文件，使用普通权限
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/static/
-        DESTINATION static
-        FILE_PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
-        DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
-
-# 安装可执行文件到 static 目录
-install(TARGETS chat_server
-        RUNTIME DESTINATION static)
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/static/ DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)

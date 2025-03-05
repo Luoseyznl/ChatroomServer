@@ -10,6 +10,7 @@ set(SOURCES
     chat/user.cpp
     user/user_manager.cpp
     utils/thread_pool.cpp
+    utils/timer.cpp
     db/database_manager.cpp
 )
 

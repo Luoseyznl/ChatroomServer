@@ -1,5 +1,5 @@
 #include "http_server.hpp"
-#include "../utils/logger.hpp"
+#include "utils/logger.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -17,19 +17,7 @@ namespace http {
 HttpServer::HttpServer(int port)
     : port(port), running(false), thread_pool(std::thread::hardware_concurrency()), static_dir("") {
     
-    // Set static directory relative to executable path
-    char buffer[1024];
-    ssize_t len = readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
-    if (len != -1) {
-        buffer[len] = '\0';
-        static_dir = std::string(buffer);
-        static_dir = static_dir.substr(0, static_dir.find_last_of('/')) + "/static";
-    } else {
-        // Fallback to current directory
-        static_dir = "../static/";
-    }
-    
-    LOG_INFO << "Static files directory: " << static_dir;
+    static_dir = "./";
     
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
