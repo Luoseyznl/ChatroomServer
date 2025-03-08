@@ -4,6 +4,7 @@
 
 int main() {
     try {
+        utils::Logger::init();
         // Use port 8080 for both HTTP and WebSocket
         LOG_INFO << "Chat server starting...";
 

@@ -1,27 +1,240 @@
 #include "logger.hpp"
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <chrono>
+#include <filesystem>
+#include <algorithm>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+#include <thread>
 
-Logger::LogStream Logger::debug(const char* file, const char* function, int line) {
-    return LogStream(LogLevel::DEBUG, file, function, line);
+namespace utils {
+
+
+
+// ANSI escape codes for colors
+struct Color {
+    static constexpr const char* RESET   = "\033[0m";
+    static constexpr const char* RED     = "\033[31m";
+    static constexpr const char* GREEN   = "\033[32m";
+    static constexpr const char* YELLOW  = "\033[33m";
+    static constexpr const char* BLUE    = "\033[34m";
+    static constexpr const char* MAGENTA = "\033[35m";
+    static constexpr const char* CYAN    = "\033[36m";
+    static constexpr const char* BOLD    = "\033[1m";
+};
+
+static const char* getFileName(const char* filePath);
+static const char* getLevelStr(LogLevel level);
+static const char* getLevelColor(LogLevel level);
+
+LogLevel Logger::globalLevel_ = LogLevel::DEBUG;
+
+void Logger::init(const LogConfig& config) {
+    getInstance().initLogger(config);
 }
 
-Logger::LogStream Logger::info(const char* file, const char* function, int line) {
-    return LogStream(LogLevel::INFO, file, function, line);
+Logger& Logger::getInstance() {
+    static Logger instance;
+    return instance;
 }
 
-Logger::LogStream Logger::warn(const char* file, const char* function, int line) {
-    return LogStream(LogLevel::WARN, file, function, line);
+void Logger::log(LogLevel level, const char* file, const char* function, int line, const std::string& message) {
+    LogStream(level, file, function, line) << message;
 }
 
-Logger::LogStream Logger::error(const char* file, const char* function, int line) {
-    return LogStream(LogLevel::ERROR, file, function, line);
+void Logger::setGlobalLevel(LogLevel level) {
+    globalLevel_ = level;
 }
 
-const char* Logger::LogStream::getLevelString(LogLevel level) {
+LogLevel Logger::getGlobalLevel() {
+    return globalLevel_;
+}
+
+Logger::LogStream::LogStream(LogLevel level, const char* file, const char* function, int line)
+    : level_(level), file_(getFileName(file)), function_(function), line_(line) {
+    if (level_ >= Logger::getGlobalLevel()) {
+        auto now = std::time(nullptr);
+        auto* timeinfo = std::localtime(&now);
+        thread_local char buffer[80];
+        std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
+        
+        stream_ << getLevelColor(level_) << '[' << buffer << "] "
+               << '[' << getLevelStr(level_) << "] "
+               << "[Thread-" << std::this_thread::get_id() << "] "
+               << '[' << file_ << ':' << function_ << ":" << line_  << "] " ;
+            //    << Color::RESET << std::endl;
+
+    }
+}
+
+Logger::LogStream::~LogStream() {
+    if (level_ >= Logger::getGlobalLevel()) {
+        stream_ << "\n";
+        const std::string &log_message = stream_.str();
+        std::cout << log_message;
+        
+        if (level_ >= LogLevel::ERROR) {
+            std::cerr << log_message;
+            std::cerr.flush();
+        }
+        
+        Logger::getInstance().writeToFile(log_message);
+    }
+}
+
+const char* getFileName(const char* filePath) {
+    const char* fileName = filePath;
+    for (const char* p = filePath; *p; ++p) {
+        if (*p == '/' || *p == '\\') {
+            fileName = p + 1;
+        }
+    }
+    return fileName;
+}
+
+const char* getLevelStr(LogLevel level) {
     switch (level) {
         case LogLevel::DEBUG: return "DEBUG";
-        case LogLevel::INFO:  return "INFO";
-        case LogLevel::WARN:  return "WARN";
+        case LogLevel::INFO:  return "INFO ";
+        case LogLevel::WARN:  return "WARN ";
         case LogLevel::ERROR: return "ERROR";
+        case LogLevel::FATAL: return "FATAL";
         default:              return "UNKNOWN";
     }
 }
+
+const char* getLevelColor(LogLevel level) {
+    switch (level) {
+        case LogLevel::DEBUG: return Color::RESET;
+        case LogLevel::INFO:  return Color::GREEN;
+        case LogLevel::WARN:  return Color::YELLOW;
+        case LogLevel::ERROR: return Color::RED;
+        case LogLevel::FATAL: return Color::RED;
+        default:              return Color::RESET;
+    }
+}
+
+void Logger::initLogger(const LogConfig& config) {
+    config_ = config;
+    current_file_path_ = getNewLogFilePath();
+    openLogFile();
+    rotateLogFileIfNeeded();
+    
+    if (config_.async_mode) {
+        write_thread_ = std::thread(&Logger::processLogQueue, this);
+    }
+}
+
+void Logger::openLogFile() {
+    if (log_file_.is_open()) {
+        log_file_.close();
+    }
+    log_file_.open(current_file_path_, std::ios::app);
+}
+
+void Logger::writeLogToFile(const std::string& message) {
+    rotateLogFileIfNeeded();
+    if (log_file_.is_open()) {
+        log_file_ << message;
+    }
+}
+
+void Logger::rotateLogFileIfNeeded() {
+    if (!std::filesystem::exists(current_file_path_)) {
+        openLogFile();
+        return;
+    }
+
+    if (std::filesystem::file_size(current_file_path_) >= config_.max_file_size) {
+        current_file_path_ = getNewLogFilePath();
+        openLogFile();
+        cleanOldLogFiles();
+    }
+}
+
+void Logger::writeToFile(const std::string& message) {
+    if (config_.async_mode) {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        log_queue_.push(std::move(message));
+        if (log_queue_.size() >= 100) {  // 批量处理阈值
+            queue_cv_.notify_one();
+        }
+    } else {
+        writeLogToFile(message);
+    }
+}
+
+void Logger::processLogQueue() {
+    std::vector<std::string> batch;
+    batch.reserve(100);  // 预分配内存
+    
+    while (true) {
+        std::unique_lock<std::mutex> lock(queue_mutex_);
+        if (!log_queue_.empty()) {
+            while (!log_queue_.empty() && batch.size() < 100) {
+                batch.push_back(std::move(log_queue_.front()));
+                log_queue_.pop();
+            }
+            lock.unlock();
+            
+            if (!batch.empty()) {
+                std::string buffer;
+                buffer.reserve(batch.size() * 256);  // 估算每条日志平均长度
+                for (const auto& msg : batch) {
+                    buffer += msg;
+                }
+                writeLogToFile(buffer);
+                batch.clear();
+            }
+        } else {
+            queue_cv_.wait(lock, [this] { 
+                return !log_queue_.empty() || stop_thread_; 
+            });
+            if (stop_thread_ && log_queue_.empty()) {
+                break;
+            }
+        }
+    }
+}
+
+void Logger::cleanOldLogFiles() {
+    std::vector<std::filesystem::path> log_files;
+    for (const auto& entry : std::filesystem::directory_iterator(config_.log_dir)) {
+        if (entry.path().extension() == ".log") {
+            log_files.push_back(entry.path());
+        }
+    }
+
+    if (log_files.size() > config_.max_files) {
+        std::sort(log_files.begin(), log_files.end());
+        for (size_t i = 0; i < log_files.size() - config_.max_files; ++i) {
+            std::filesystem::remove(log_files[i]);
+        }
+    }
+}
+
+std::string Logger::getNewLogFilePath() {
+    std::filesystem::create_directories(config_.log_dir);
+    auto now = std::chrono::system_clock::now();
+    auto now_time_t = std::chrono::system_clock::to_time_t(now);
+    std::stringstream ss;
+    ss << config_.log_dir << "/" 
+       << std::put_time(std::localtime(&now_time_t), "%Y%m%d_%H%M%S") 
+       << ".log";
+    return ss.str();
+}
+
+Logger::~Logger() {
+    if (config_.async_mode) {
+        stop_thread_ = true;
+        queue_cv_.notify_one();
+        if (write_thread_.joinable()) {
+            write_thread_.join();
+        }
+    }
+}
+
+} // namespace utils

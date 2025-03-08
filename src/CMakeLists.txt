@@ -7,7 +7,7 @@ set(SOURCES
     http/http_response.cpp
     chat/user.cpp
     utils/thread_pool.cpp
-    utils/thread_pool.cpp
+    utils/logger.cpp
     utils/work_stealing_thread_pool.cpp
     utils/timer.cpp
     db/database_manager.cpp
