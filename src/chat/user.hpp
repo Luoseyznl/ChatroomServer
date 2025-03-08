@@ -2,7 +2,6 @@
 #include <string>
 #include <nlohmann/json.hpp>
 
-namespace chat {
 
 struct User {
     std::string username;
@@ -13,4 +12,4 @@ struct User {
     static User fromJson(const nlohmann::json& j);
 };
 
-} // namespace chat
+

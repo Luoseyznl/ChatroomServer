@@ -1,8 +1,6 @@
 #pragma once
 
 #include "http/http_server.hpp"
-#include "user/user_manager.hpp"
-#include "chat/chat_manager.hpp"
 #include "db/database_manager.hpp"
 #include <memory>
 #include <string>
@@ -21,7 +19,5 @@ private:
 
     std::string static_dir_;
     std::unique_ptr<http::HttpServer> http_server_;
-    // std::shared_ptr<UserManager> user_manager_;
-    // std::shared_ptr<chat::ChatManager> chat_manager_;
     std::shared_ptr<DatabaseManager> db_manager_;
 };

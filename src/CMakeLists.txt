@@ -5,10 +5,7 @@ set(SOURCES
     http/http_server.cpp
     http/http_request.cpp
     http/http_response.cpp
-    chat/chat_manager.cpp
-    chat/chat_room.cpp
     chat/user.cpp
-    user/user_manager.cpp
     utils/thread_pool.cpp
     utils/thread_pool.cpp
     utils/work_stealing_thread_pool.cpp

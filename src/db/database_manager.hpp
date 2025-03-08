@@ -6,7 +6,7 @@
 #include <sqlite3.h>
 #include <nlohmann/json.hpp>
 #include <mutex>
-#include "../user/user_manager.hpp"
+#include "chat/user.hpp"
 
 class DatabaseManager {
 public:
@@ -21,7 +21,6 @@ public:
     bool updateUserLastActiveTime(const std::string& username);
     bool checkAndUpdateInactiveUsers(int64_t timeout_ms);
     std::vector<User> getAllUsers();
-    
     // Room operations
     bool createRoom(const std::string& name, const std::string& creator);
     bool deleteRoom(const std::string& name);

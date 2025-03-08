@@ -1,6 +1,5 @@
 #include "user.hpp"
 
-namespace chat {
 
 nlohmann::json User::toJson() const {
     return {
@@ -18,4 +17,4 @@ User User::fromJson(const nlohmann::json& j) {
     };
 }
 
-} // namespace chat
+
