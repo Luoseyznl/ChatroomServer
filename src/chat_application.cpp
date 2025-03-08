@@ -38,7 +38,7 @@ void ChatApplication::stop() {
 void ChatApplication::setupRoutes() {
     // 静态文件处理
     http_server_->addHandler("/", "GET", [this](const http::HttpRequest& request) -> http::HttpResponse {
-        return serveStaticFile("/index.html");
+        return serveStaticFile("/login.html");
     });
     
     // 处理注册请求
@@ -100,35 +100,6 @@ void ChatApplication::setupRoutes() {
             }
         } catch (const json::exception& e) {
             LOG_ERROR << "JSON parse error: " << e.what();
-            return http::HttpResponse(400, "{\"error\":\"Invalid JSON\"}");
-        }
-    });
-    
-    // 自动登录
-    http_server_->addHandler("/auto_login", "POST", [this](const http::HttpRequest& request) -> http::HttpResponse {
-        try {
-            json data = json::parse(request.body);
-            LOG_DEBUG << "Auto login request: " << data.dump();
-            
-            if (!data.contains("username")) {
-                LOG_ERROR << "Missing username in auto login request";
-                return http::HttpResponse(400, "{\"error\":\"Missing username\"}");
-            }
-            
-            std::string username = data["username"];
-            if (db_manager_->userExists(username)) {
-                LOG_INFO << "Auto login successful for user: " << username;
-                json response = {
-                    {"status", "success"},
-                    {"username", username}
-                };
-                return http::HttpResponse(200, response.dump());
-            } else {
-                LOG_WARN << "Auto login failed: user not found: " << username;
-                return http::HttpResponse(401, "{\"error\":\"User not found\"}");
-            }
-        } catch (const json::exception& e) {
-            LOG_ERROR << "JSON parse error in auto login: " << e.what();
             return http::HttpResponse(400, "{\"error\":\"Invalid JSON\"}");
         }
     });
