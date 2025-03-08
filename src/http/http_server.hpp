@@ -4,7 +4,7 @@
 #include "utils/thread_pool.hpp"
 #include "http/http_request.hpp"
 #include "http/http_response.hpp"
-
+#include "utils/work_stealing_thread_pool.hpp"
 namespace http {
 
 class HttpServer {
@@ -22,7 +22,8 @@ private:
     int server_fd;
     int port;
     bool running;
-    utils::ThreadPool thread_pool;
+    utils::WorkStealingThreadPool thread_pool;
+    // utils::ThreadPool thread_pool;
     std::unordered_map<std::string, std::unordered_map<std::string, RequestHandler>> handlers;
     std::string static_dir;
 
