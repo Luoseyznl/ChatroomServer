@@ -48,10 +48,7 @@ public:
 
     private:
         LogLevel level_;
-        const char* file_;
-        const char* function_;
-        int line_;
-        std::ostringstream stream_;
+        std::ostringstream &stream_;
     };
 
     static void init(const LogConfig& config = LogConfig());

@@ -30,6 +30,7 @@ static const char* getFileName(const char* filePath);
 static const char* getLevelStr(LogLevel level);
 static const char* getLevelColor(LogLevel level);
 
+static constexpr size_t BATCH_PROCESSING_THRESHOLD = 100;  // 日志批量处理阈值
 LogLevel Logger::globalLevel_ = LogLevel::DEBUG;
 
 void Logger::init(const LogConfig& config) {
@@ -40,6 +41,7 @@ Logger& Logger::getInstance() {
     static Logger instance;
     return instance;
 }
+
 
 void Logger::log(LogLevel level, const char* file, const char* function, int line, const std::string& message) {
     LogStream(level, file, function, line) << message;
@@ -53,20 +55,46 @@ LogLevel Logger::getGlobalLevel() {
     return globalLevel_;
 }
 
-Logger::LogStream::LogStream(LogLevel level, const char* file, const char* function, int line)
-    : level_(level), file_(getFileName(file)), function_(function), line_(line) {
-    if (level_ >= Logger::getGlobalLevel()) {
-        auto now = std::time(nullptr);
-        auto* timeinfo = std::localtime(&now);
-        thread_local char buffer[80];
-        std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
-        
-        stream_ << getLevelColor(level_) << '[' << buffer << "] "
-               << '[' << getLevelStr(level_) << "] "
-               << "[Thread-" << std::this_thread::get_id() << "] "
-               << '[' << file_ << ':' << function_ << ":" << line_  << "] " ;
-            //    << Color::RESET << std::endl;
+// 避免高频率构造std::ostringstream， 相当于简易的对象池
+static std::ostringstream& getStream() {
+    static thread_local std::ostringstream stream;
+    stream.str("");  // 清空流内容
+    stream.clear();   // 清空错误状态
+    return stream;
+}
 
+static inline char* printCurrentTime() {
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+    std::tm now_tm = {};
+#ifdef _WIN32
+    if (localtime_s(&now_tm, &now_time) == 0) {
+#else
+    if (localtime_r(&now_time, &now_tm)) {
+#endif // _WIN32
+        auto now_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now).time_since_epoch().count();
+        constexpr int buffer_size = 32;
+        static thread_local char buffer[buffer_size];
+        
+        auto write = std::snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d %02d:%02d:%02d.%03d",
+            now_tm.tm_year + 1900, now_tm.tm_mon + 1, now_tm.tm_mday,
+            now_tm.tm_hour, now_tm.tm_min, now_tm.tm_sec, (int)(now_ms % 1000));
+        
+            buffer[std::min(write, buffer_size-1)] = 0;
+        return buffer;
+    } else {
+        return (char*)"";
+    }
+}
+
+Logger::LogStream::LogStream(LogLevel level, const char* file, const char* function, int line)
+    : level_(level), stream_(getStream()) {
+    if (level_ >= Logger::getGlobalLevel()) {
+        stream_ << getLevelColor(level_) 
+                << '[' << printCurrentTime() << "] "
+                << '[' << getLevelStr(level_) << "] "
+                << "[" << std::this_thread::get_id() << "] "
+                << '[' << getFileName(file) << ':' << function << ":" << line  << "] " ;
     }
 }
 
@@ -98,8 +126,8 @@ const char* getFileName(const char* filePath) {
 const char* getLevelStr(LogLevel level) {
     switch (level) {
         case LogLevel::DEBUG: return "DEBUG";
-        case LogLevel::INFO:  return "INFO ";
-        case LogLevel::WARN:  return "WARN ";
+        case LogLevel::INFO:  return "INFO";
+        case LogLevel::WARN:  return "WARN";
         case LogLevel::ERROR: return "ERROR";
         case LogLevel::FATAL: return "FATAL";
         default:              return "UNKNOWN";
@@ -159,7 +187,7 @@ void Logger::writeToFile(const std::string& message) {
     if (config_.async_mode) {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         log_queue_.push(std::move(message));
-        if (log_queue_.size() >= 100) {  // 批量处理阈值
+        if (log_queue_.size() >= BATCH_PROCESSING_THRESHOLD) {  // 批量处理阈值
             queue_cv_.notify_one();
         }
     } else {
@@ -169,12 +197,12 @@ void Logger::writeToFile(const std::string& message) {
 
 void Logger::processLogQueue() {
     std::vector<std::string> batch;
-    batch.reserve(100);  // 预分配内存
+    batch.reserve(BATCH_PROCESSING_THRESHOLD);  // 预分配内存
     
     while (true) {
         std::unique_lock<std::mutex> lock(queue_mutex_);
         if (!log_queue_.empty()) {
-            while (!log_queue_.empty() && batch.size() < 100) {
+            while (!log_queue_.empty() && batch.size() < BATCH_PROCESSING_THRESHOLD) {
                 batch.push_back(std::move(log_queue_.front()));
                 log_queue_.pop();
             }
@@ -182,9 +210,13 @@ void Logger::processLogQueue() {
             
             if (!batch.empty()) {
                 std::string buffer;
-                buffer.reserve(batch.size() * 256);  // 估算每条日志平均长度
+                size_t total_size = 0;
                 for (const auto& msg : batch) {
-                    buffer += msg;
+                    total_size += msg.size();
+                }
+                buffer.reserve(total_size);
+                for (const auto& msg : batch) {
+                    buffer.append(msg);
                 }
                 writeLogToFile(buffer);
                 batch.clear();
