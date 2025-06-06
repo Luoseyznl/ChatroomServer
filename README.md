@@ -39,12 +39,12 @@ cmake ..
 
 3. Build the project:
 ```bash
-make
+make install
 ```
 
 4. Run the server:
 ```bash
-# cd build/bin
+cd bin
 ./chat_server
 ```
 

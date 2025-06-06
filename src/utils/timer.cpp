@@ -1,123 +1,103 @@
 #include "timer.hpp"
 
+#include <iostream>
+
 namespace utils {
 
-Timer::Timer()
-    : running_(false) {}
+Timer::Timer() : running_(false) {}
+Timer::~Timer() { stop(); }
 
-Timer::~Timer() {
-    stop();
-}
+void Timer::addOnceTask(std::chrono::milliseconds delay,
+                        std::function<void()> callback) {
+  auto execution_time = std::chrono::steady_clock::now() + delay;
+  Task task(execution_time, std::move(callback));
 
-void Timer::addOnceTask(std::chrono::milliseconds delay, std::function<void()> callback) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto execution_time = std::chrono::steady_clock::now() + delay;
-    Task task(execution_time, std::move(callback));
-    once_tasks_.push(std::move(task));
-    cv_.notify_one();
+  {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    task_queue_.push(task);
+    condition_.notify_one();
+  }
 }
 
 void Timer::addPeriodicTask(std::chrono::milliseconds delay,
-                           std::chrono::milliseconds period,
-                           std::function<void()> callback) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto execution_time = std::chrono::steady_clock::now() + delay;
-    Task task(execution_time, std::move(callback), true, period);
-    periodic_tasks_.push(std::move(task));
-    cv_.notify_one();
-}
-
-void Timer::start() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!running_) {
-        running_ = true;
-        timer_thread_ = std::thread([this] { processTimerTasks(); });
-    }
+                            std::chrono::milliseconds period,
+                            std::function<void()> callback) {
+  auto execution_time = std::chrono::steady_clock::now() + delay;
+  Task task(execution_time, std::move(callback), true, period);
+  {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    task_queue_.push(task);
+    condition_.notify_one();
+  }
 }
 
 void Timer::stop() {
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        running_ = false;
-        cv_.notify_one();
-    }
-    if (timer_thread_.joinable()) {
-        timer_thread_.join();
-    }
+  {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    running_ = false;
+    condition_.notify_all();  // Notify the thread to wake up and exit
+  }
+
+  if (timer_thread_.joinable()) {
+    timer_thread_.join();
+  }
 }
 
-void Timer::processTimerTasks() {
-    while (true) {
-        std::unique_lock<std::mutex> lock(mutex_);
-        
-        if (!running_) {
-            break;
-        }
+/**
+ * @brief 启动定时器
+ *
+ * 创建后台线程处理定时任务队列
+ */
+void Timer::start() {
+  {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    if (running_) return;
+    running_ = true;
+  }
 
-        if (once_tasks_.empty() && periodic_tasks_.empty()) {
-            cv_.wait(lock, [this] { return !running_ || !once_tasks_.empty() || !periodic_tasks_.empty(); });
-            continue;
-        }
-
+  timer_thread_ = std::thread([this]() {
+    std::unique_lock<std::mutex> lock(queue_mutex_);
+    while (running_) {
+      if (task_queue_.empty()) {
+        condition_.wait(lock,
+                        [this]() { return !running_ || !task_queue_.empty(); });
+      } else {
         auto now = std::chrono::steady_clock::now();
-        Task* earliest_task = nullptr;
-        auto earliest_time = std::chrono::steady_clock::time_point::max();
-        bool is_from_periodic = false;
+        auto next_task = task_queue_.top();
 
-        // 检查一次性任务队列
-        if (!once_tasks_.empty()) {
-            Task& task = once_tasks_.front();
-            if (task.execution_time < earliest_time) {
-                earliest_time = task.execution_time;
-                earliest_task = new Task(std::move(task));
-                is_from_periodic = false;
-            }
+        if (next_task.execution_time <= now) {
+          // 任务到期，执行回调
+          task_queue_.pop();
+          if (next_task.is_periodic) {
+            auto next_execution_time =
+                next_task.execution_time + next_task.period;
+
+            Task periodic_task(next_execution_time, next_task.callback, true,
+                               next_task.period);
+            task_queue_.push(periodic_task);
+          }
+
+          try {
+            lock.unlock();  // 回调前解锁，避免死锁
+            next_task.callback();
+          } catch (const std::exception& e) {
+            std::cerr << "Exception in task callback: " << e.what()
+                      << std::endl;
+          }
+          lock.lock();
+
+        } else {
+          // 任务未到期，等待下一个任务到期、新任务入队或定时器停止
+          condition_.wait_until(
+              lock, next_task.execution_time, [this, &next_task]() {
+                return !running_ || (!task_queue_.empty() &&
+                                     task_queue_.top().execution_time <=
+                                         next_task.execution_time);
+              });
         }
-
-        // 检查周期性任务队列
-        if (!periodic_tasks_.empty()) {
-            Task& task = periodic_tasks_.front();
-            if (task.execution_time < earliest_time) {
-                if (earliest_task != nullptr) {
-                    delete earliest_task;
-                }
-                earliest_time = task.execution_time;
-                earliest_task = new Task(std::move(task));
-                is_from_periodic = true;
-            }
-        }
-
-        // 如果最早的任务还没到执行时间，等待
-        if (earliest_task && earliest_task->execution_time > now) {
-            if (is_from_periodic) {
-                periodic_tasks_.front() = std::move(*earliest_task);
-            } else {
-                once_tasks_.front() = std::move(*earliest_task);
-            }
-            delete earliest_task;
-            cv_.wait_until(lock, earliest_time);
-            continue;
-        }
-
-        // 执行最早的任务
-        if (earliest_task) {
-            Task task = std::move(*earliest_task);
-            delete earliest_task;
-
-            // 从对应队列中移除任务
-            if (is_from_periodic) {
-                periodic_tasks_.pop();
-                // 重新调度周期性任务
-                task.execution_time += task.period;
-                periodic_tasks_.push(std::move(task));
-            } else {
-                once_tasks_.pop();
-            }
-
-            lock.unlock();
-            task.callback();
-        }
+      }
     }
+  });
 }
 
-} // namespace utils
+}  // namespace utils

@@ -2,66 +2,65 @@
 #define TIMER_HPP
 
 #include <chrono>
-#include <functional>
-#include <queue>
-#include <mutex>
-#include <memory>
-#include <thread>
 #include <condition_variable>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <thread>
 
 namespace utils {
 
+/**
+ * @brief 定时器类，支持一次性任务和周期性任务
+ *
+ * 可以安排任务在未来某个时间点执行，或以固定的时间间隔重复执行。
+ */
 class Timer {
-public:
-    struct Task {
-        std::chrono::steady_clock::time_point execution_time;
-        std::function<void()> callback;
-        bool is_periodic;
-        std::chrono::milliseconds period;
+ public:
+  /**
+   * @brief 定义一个任务结构体
+   *
+   * 包含任务的执行时间、回调函数、是否为周期性任务及其周期。
+   */
+  struct Task {
+    std::chrono::steady_clock::time_point execution_time;
+    std::function<void()> callback;
+    bool is_periodic;
+    std::chrono::milliseconds period;
 
-        Task(std::chrono::steady_clock::time_point time, 
-             std::function<void()> cb,
-             bool periodic = false,
-             std::chrono::milliseconds p = std::chrono::milliseconds(0))
-            : execution_time(time)
-            , callback(cb)
-            , is_periodic(periodic)
-            , period(p) {}
+    Task(std::chrono::steady_clock::time_point exec_time,
+         std::function<void()> cb, bool periodic = false,
+         std::chrono::milliseconds period_duration =
+             std::chrono::milliseconds(0))
+        : execution_time(exec_time),
+          callback(std::move(cb)),
+          is_periodic(periodic),
+          period(period_duration) {}
+    bool operator>(const Task& other) const {
+      return execution_time > other.execution_time;
+    }
+  };
 
-        bool operator>(const Task& other) const {
-            return execution_time > other.execution_time;
-        }
-    };
+  explicit Timer();
+  ~Timer();
+  // 一次性任务，将在当前时间点之后的 delay 执行一次
+  void addOnceTask(std::chrono::milliseconds delay,
+                   std::function<void()> callback);
+  // 周期性任务，将在当前时间点之后的 delay 执行，并每隔 period 执行一次
+  void addPeriodicTask(std::chrono::milliseconds delay,
+                       std::chrono::milliseconds period,
+                       std::function<void()> callback);
+  void start();
+  void stop();
 
-    explicit Timer();
-    ~Timer();
-
-    // 添加一次性定时任务
-    void addOnceTask(std::chrono::milliseconds delay, std::function<void()> callback);
-
-    // 添加周期性定时任务
-    void addPeriodicTask(std::chrono::milliseconds delay, 
-                        std::chrono::milliseconds period, 
-                        std::function<void()> callback);
-
-    // 启动定时器
-    void start();
-
-    // 停止定时器
-    void stop();
-
-private:
-    void processTimerTasks();
-    void scheduleNextTask();
-
-    std::queue<Task> once_tasks_;     // 一次性任务队列
-    std::queue<Task> periodic_tasks_;  // 周期性任务队列
-    std::mutex mutex_;
-    bool running_;
-    std::condition_variable cv_;
-    std::thread timer_thread_;
+ private:
+  std::priority_queue<Task, std::vector<Task>, std::greater<Task>> task_queue_;
+  std::mutex queue_mutex_;
+  std::condition_variable condition_;
+  std::thread timer_thread_;
+  bool running_;
 };
+}  // namespace utils
 
-} // namespace utils
-
-#endif // TIMER_HPP
+#endif  // TIMER_HPP

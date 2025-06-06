@@ -619,7 +619,7 @@
                 body: JSON.stringify({ 
                     room: currentRoom,
                     username: username,
-                    since: lastMessageTime
+                    since: lastMessageTime || 0
                 })
             })
             .then(response => {
