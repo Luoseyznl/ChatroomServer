@@ -1,0 +1,19 @@
+{
+  "name": "ChatroomServerDev",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "workspaceFolder": "/projects/ChatroomServer",
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/projects/ChatroomServer,type=bind"
+  ],
+  "settings": {
+    "terminal.integrated.shell.linux": "/bin/zsh"
+  },
+  "extensions": [
+    "ms-vscode.cpptools",
+    "ms-vscode.cmake-tools",
+    "ms-azuretools.vscode-docker"
+  ],
+  "forwardPorts": [8080]
+}
