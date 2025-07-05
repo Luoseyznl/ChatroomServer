@@ -1,0 +1,8 @@
+[32m[INFO] 2025-07-05 20:50:25.785 main.cpp:48 main: [0mChatroomServer starting...
+[32m[INFO] 2025-07-05 20:50:25.788 chatroom_server_epoll.cpp:111 ChatroomServerEpoll: [0mChatroom server initialized on port 8080
+[32m[INFO] 2025-07-05 20:50:25.788 main.cpp:67 main: [0mServer listening on port 8080
+[32m[INFO] 2025-07-05 20:50:34.102 main.cpp:23 signalHandler: [0mReceived signal 2, shutting down...
+[32m[INFO] 2025-07-05 20:50:34.102 chatroom_server_epoll.cpp:130 stop: [0mChatroom server stopped
+[32m[INFO] 2025-07-05 20:50:34.102 main.cpp:73 main: [0mServer running. Press Ctrl+C to stop.
+[32m[INFO] 2025-07-05 20:50:34.102 chatroom_server_epoll.cpp:130 stop: [0mChatroom server stopped
+[32m[INFO] 2025-07-05 20:50:34.102 main.cpp:87 main: [0mServer shutdown complete
