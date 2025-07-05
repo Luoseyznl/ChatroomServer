@@ -36,6 +36,7 @@ void Timer::start() {
     std::lock_guard<std::mutex> lock(tasksMutex_);
     if (running_) return;  // Already running
     running_ = true;
+    // std::cout << "Timer started." << std::endl;
   }
 
   timerThread_ = std::thread([this]() {
@@ -51,13 +52,15 @@ void Timer::start() {
         if (nextTask.execTimestamp <= now) {
           taskQueue_.pop();
 
-          if (nextTask.isPeriodic) {
+          if (nextTask.isPeriodic && running_) {
             nextTask.execTimestamp += nextTask.period;
             taskQueue_.push(nextTask);
+            // std::cout << "Executing periodic task." << std::endl;
           }
 
           lock.unlock();  // Unlock before executing the callback
           nextTask.callback();
+          std::this_thread::yield();
           lock.lock();
         } else {
           tasksCv_.wait_until(
@@ -76,6 +79,7 @@ void Timer::stop() {
   {
     std::lock_guard<std::mutex> lock(tasksMutex_);
     running_ = false;
+    // std::cout << "Timer stopping." << std::endl;
     tasksCv_.notify_all();  // Notify the thread to wake up and exit
   }
 

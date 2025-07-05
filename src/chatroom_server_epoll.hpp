@@ -13,6 +13,8 @@ class ChatroomServerEpoll {
  public:
   ChatroomServerEpoll(const std::string& static_dir_path,
                       const std::string& db_file_path, int port);
+
+  void cleanupPendingChannels();
   void start();
   void stop();
 
@@ -34,6 +36,7 @@ class ChatroomServerEpoll {
   std::unique_ptr<reactor::EventLoop> eventLoop_;
   int listenFd_{-1};
   std::unordered_map<int, std::shared_ptr<reactor::Channel>> clientChannels_;
+  std::vector<int> pendingDeleteFds_;
   std::atomic<bool> running_{false};
 
   // 路由表

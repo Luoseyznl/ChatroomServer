@@ -166,6 +166,7 @@ void Logger::writeLogToFile(const std::string& message) {
   if (logFileStream_.is_open()) {
     logFileStream_ << message;
   }
+  logFileStream_.flush();  // 强制刷新缓冲区，确保日志立即写入文件
 }
 
 void Logger::asyncWriteLogToFile() {

@@ -68,31 +68,75 @@
 - 处理客户端事件：读取客户端请求，解析请求报文，通过路由 route_ 进行分发处理
 - 短链接：处理完请求后关闭连接，避免长时间占用资源
 
-Nginx 反向代理
+---
 
-理解生产环境部署、负载均衡、静态资源分发、HTTPS 等基础。
-先学这个有助于你本地和线上都能方便地调试和访问你的服务。
-Postman 测试方法
+## wrk 性能测试
+- `wrk` 是一个现代 HTTP 压力测试工具，支持多线程和 Lua 脚本
+- 使用 Lua 脚本定义请求参数和处理逻辑
+    ```lua
+    wrk.method = "POST"
+    wrk.headers["Content-Type"] = "application/json"
+    wrk.body = '{"username":"testuser","password":"testpass"}'
+    ```
+    ```sh
+    wrk -t4 -c100 -d10s -s post_login.lua http://localhost:8080/login
+    ```
+    ```
+    Running 10s test @ http://localhost:8080/login
+        4 threads and 100 connections
+        Thread Stats   Avg      Stdev     Max   +/- Stdev
+        Latency    10.34ms   10.43ms 131.77ms   94.73%
+        Req/Sec     2.76k   778.15     4.03k    67.75%
+        110015 requests in 10.01s, 13.64MB read
+    Requests/sec:  10993.69
+    Transfer/sec:      1.36MB
+    ```
 
-学会用 Postman 测试你的 HTTP API，能快速验证接口正确性，提升开发效率。
-这一步和 Nginx 配合，可以模拟真实生产环境的请求。
-Kafka 中间件
+## AddressSanitizer (ASan) 检测
+- CMakeLists.txt 中启用 AddressSanitizer
+    ```cmake
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -g")
+    ```
+- 编译后运行时，ASan 会自动检测内存错误并报告
+    ```sh
+    ==2493372==ERROR: AddressSanitizer: heap-use-after-free on address 0x50e0000003d8
+        #0  reactor::Channel::handleEvent() .../channel.cpp:25
+        #1  reactor::EventLoop::loop() .../event_loop.cpp:24
+        ...
+        freed by thread T0 here:
+        #0  operator delete(void*, unsigned long) ...
+        #1  ... ChatroomServerEpoll::handleClientEvent(int) ...
 
-学习消息队列的基本原理和用法，理解异步解耦、消息持久化、分布式等概念。
-可以先用官方客户端，后续再考虑源码或高级用法。
-SQLite 源码集成
+    ```
+    - EventLoop 访问已释放的 Channel 对象，导致 use-after-free。
+      - 原代码释放 channel： chatroom_server_epoll.cpp
+        ```cpp
+        ...(channel 新客户端连接处理回调函数)...
+        eventLoop_->removeChannel(clientFd);
+        clientChannels_.erase(fd);
+        close(fd);
+        ```
+    - 解决方法：
+      1. 在处理回调函数先暂存待删除的客户端链接 pendingDeleteFds
+        ```cpp
+        void ChatroomServerEpoll::cleanupPendingChannels() {
+        for (int fd : pendingDeleteFds_) {
+            clientChannels_.erase(fd);
+            close(fd);
+        }
+        pendingDeleteFds_.clear();
+        }
+        ```
+      2. 在 EventLoop 的 loop() 方法中统一清理已废弃的 Channel
+        ```cpp
+        Event::loop() {
+            ...
 
-理解如何直接集成 SQLite 源码，便于移植、定制和优化。
-这一步可以让你对数据库的底层实现有更深入的理解。
-TSan/ASan 插装分析
+            if (chatroomServerEpoll_) {
+            chatroomServerEpoll_->cleanupPendingChannels();
+            }
+        }
+        ```
 
-学习用 ThreadSanitizer（TSan）和 AddressSanitizer（ASan）检测并发和内存问题。
-这一步适合在你的服务基本跑通后，排查潜在 bug。
-perf 性能检测
-
-学习用 perf 工具分析程序的 CPU、内存等性能瓶颈。
-适合在服务稳定后，做性能优化。
-benchmark 插桩分析
-
-学习用 Google Benchmark 或自定义 benchmark 对关键代码做微基准测试。
-这一步可以帮助你量化优化效果。
+## 总结
+- 服务器每秒可处理约 1.1 万个请求，平均响应时间 10.34ms，每秒传输 1.36MB 数据

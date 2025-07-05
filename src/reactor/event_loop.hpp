@@ -7,6 +7,8 @@
 #include "channel.hpp"
 #include "epoller.hpp"
 
+class ChatroomServerEpoll;
+
 namespace reactor {
 class EventLoop {
  public:
@@ -16,6 +18,10 @@ class EventLoop {
   void loop();
   void quit();
 
+  void setChatroomServerEpoll(ChatroomServerEpoll* ptr) {
+    chatroomServerEpoll_ = ptr;
+  }
+
   void addChannel(std::shared_ptr<Channel> channel);
   void updateChannel(std::shared_ptr<Channel> channel);
   void removeChannel(int fd);
@@ -24,5 +30,6 @@ class EventLoop {
   std::atomic<bool> running_{false};
   Epoller epoller_;
   std::unordered_map<int, std::shared_ptr<Channel>> channels_;
+  ChatroomServerEpoll* chatroomServerEpoll_{nullptr};
 };
 }  // namespace reactor

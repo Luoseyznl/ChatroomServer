@@ -108,6 +108,7 @@ ChatroomServerEpoll::ChatroomServerEpoll(const std::string& static_dir_path,
     throw std::runtime_error("Failed to listen");
   }
   setupRoutes();
+  eventLoop_->setChatroomServerEpoll(this);
   LOG(INFO) << "Chatroom server initialized on port " << port;
 }
 
@@ -191,14 +192,12 @@ void ChatroomServerEpoll::handleClientEvent(int clientFd) {
       if (n < (ssize_t)sizeof(buf)) break;  // 简单处理：假设一次收完
     } else if (n == 0) {
       eventLoop_->removeChannel(clientFd);
-      clientChannels_.erase(clientFd);
-      close(clientFd);
+      pendingDeleteFds_.push_back(clientFd);
       return;
     } else {
       if (errno == EAGAIN || errno == EWOULDBLOCK) break;
       eventLoop_->removeChannel(clientFd);
-      clientChannels_.erase(clientFd);
-      close(clientFd);
+      pendingDeleteFds_.push_back(clientFd);
       return;
     }
   }
@@ -211,8 +210,7 @@ void ChatroomServerEpoll::handleClientEvent(int clientFd) {
                                         "application/json", 400);
     send(clientFd, resp.data(), resp.size(), 0);
     eventLoop_->removeChannel(clientFd);
-    clientChannels_.erase(clientFd);
-    close(clientFd);
+    pendingDeleteFds_.push_back(clientFd);
     return;
   }
   LOG(INFO) << "Received request: " << method << " " << path;
@@ -248,8 +246,7 @@ void ChatroomServerEpoll::handleClientEvent(int clientFd) {
 
   // 短连接，直接关闭
   eventLoop_->removeChannel(clientFd);
-  clientChannels_.erase(clientFd);
-  close(clientFd);
+  pendingDeleteFds_.push_back(clientFd);
   LOG(INFO) << "Client disconnected: " << clientFd;
 }
 
@@ -460,6 +457,14 @@ void ChatroomServerEpoll::setupRoutes() {
           return std::string("{\"error\":\"Invalid JSON\"}");
         }
       });
+}
+
+void ChatroomServerEpoll::cleanupPendingChannels() {
+  for (int fd : pendingDeleteFds_) {
+    clientChannels_.erase(fd);
+    close(fd);
+  }
+  pendingDeleteFds_.clear();
 }
 
 void ChatroomServerEpoll::registerHandler(const std::string& method,

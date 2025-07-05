@@ -184,6 +184,19 @@ chat_server/fast:
 	$(MAKE) $(MAKESILENT) -f src/CMakeFiles/chat_server.dir/build.make src/CMakeFiles/chat_server.dir/build
 .PHONY : chat_server/fast
 
+#=============================================================================
+# Target rules for targets named test_utils
+
+# Build rule for target.
+test_utils: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_utils
+.PHONY : test_utils
+
+# fast build rule for target.
+test_utils/fast:
+	$(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_utils.dir/build.make tests/CMakeFiles/test_utils.dir/build
+.PHONY : test_utils/fast
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -198,6 +211,7 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... test"
 	@echo "... chat_server"
+	@echo "... test_utils"
 .PHONY : help
 
 

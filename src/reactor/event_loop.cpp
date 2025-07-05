@@ -1,10 +1,10 @@
 #include "event_loop.hpp"
 
-namespace reactor {
-
 #include <sys/epoll.h>
 
-#include "event_loop.hpp"
+#include "chatroom_server_epoll.hpp"
+
+namespace reactor {
 
 EventLoop::EventLoop() : running_(false), epoller_() {}
 
@@ -23,6 +23,9 @@ void EventLoop::loop() {
         it->second->setRevents(activeEvents[i].events);
         it->second->handleEvent();
       }
+    }
+    if (chatroomServerEpoll_) {
+      chatroomServerEpoll_->cleanupPendingChannels();
     }
   }
 }
