@@ -119,6 +119,12 @@
     - 解决方法：
       1. 在处理回调函数先暂存待删除的客户端链接 pendingDeleteFds
         ```cpp
+        ...
+        endingDeleteFds_.push_back(clientFd);
+        ...
+        ```
+      2. 在 EventLoop 的 loop() 方法中统一清理已废弃的 Channel
+        ```cpp
         void ChatroomServerEpoll::cleanupPendingChannels() {
         for (int fd : pendingDeleteFds_) {
             clientChannels_.erase(fd);
@@ -126,9 +132,7 @@
         }
         pendingDeleteFds_.clear();
         }
-        ```
-      2. 在 EventLoop 的 loop() 方法中统一清理已废弃的 Channel
-        ```cpp
+
         Event::loop() {
             ...
 

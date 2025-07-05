@@ -1,8 +1,0 @@
-[32m[INFO] 2025-07-05 20:50:52.509 main.cpp:48 main: [0mChatroomServer starting...
-[32m[INFO] 2025-07-05 20:50:52.512 chatroom_server_epoll.cpp:111 ChatroomServerEpoll: [0mChatroom server initialized on port 8080
-[32m[INFO] 2025-07-05 20:50:52.512 main.cpp:67 main: [0mServer listening on port 8080
-[32m[INFO] 2025-07-05 20:51:09.034 chatroom_server_epoll.cpp:153 handleNewConnection: [0mNew client connected: 127.0.0.1:49594
-[32m[INFO] 2025-07-05 20:51:10.353 chatroom_server_epoll.cpp:218 handleClientEvent: [0mReceived request: GET /
-[32m[INFO] 2025-07-05 20:51:10.353 chatroom_server_epoll.cpp:180 handleStaticFile: [0mServing static file: /login.html
-[32m[INFO] 2025-07-05 20:51:10.354 chatroom_server_epoll.cpp:247 handleClientEvent: [0mSent response: text/html
-[32m[INFO] 2025-07-05 20:51:10.354 chatroom_server_epoll.cpp:253 handleClientEvent: [0mClient disconnected: 7
