@@ -1,3 +1,13 @@
+## 项目介绍
+ChatroomServerEpoll 是基于 epoll/reactor 模型实现的高性能聊天室服务器。其核心是事件驱动的异步 IO，主要组件包括 EventLoop、Channel 和 Epoller等。Epoller 是对 epoll 的封装，负责管理文件描述符 fd 和其感兴趣的事件 event 的映射关系。Channel 将 fd 与其感兴趣的事件（读、写、关闭）、对应的回调处理函数绑定。
+
+首先，EventLoop事件循环内部持有一个 Epoller 和多个 Channel。 EventLoop 的 loop() 方法调用 Epoller 的 wait() 方法等待事件发生。当有事件发生时 Epoller 返回活跃事件列表，EventLoop 遍历这些事件，根据 fd 找到对应的 Channel，调用 Channel 的 handleEvent() 方法处理事件。
+
+服务器的工作流程：服务器启动时 ChatroomServerEpoll 创建一个监听 socket，绑定端口并使用 Channel 将其与可读事件及回调函数绑定，注册到Epoller 中 (EventLoop::addChannel())。一旦有客户端连接，Epoller 先返回活跃的 fd，EventLoop 通过 Channel 的 handleEvent() 回调 accept 新连接。对于每个新连接，服务器创建一个新的 Channel，将其与可读事件及处理回调绑定，并注册到 Epoller 中。
+当客户端发送请求时，Epoller 检测到 fd 可读，EventLoop 调用 Channel 的 handleEvent() 方法读取请求报文，解析后通过路由分发处理。处理完请求后，服务器关闭连接，避免长时间占用资源。
+
+---
+
 ## main 主循环
 - 初始化日志、服务器，注册终止信号处理函数（通过全局指针访问ChatroomServer）后进入空闲等待
 
@@ -146,3 +156,4 @@
 - 服务器每秒可处理约 1.1 万个请求，平均响应时间 10.34ms，每秒传输 1.36MB 数据
 
 ![火焰图](flamgraph.svg)
+
