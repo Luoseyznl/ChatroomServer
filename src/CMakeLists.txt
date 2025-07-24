@@ -24,7 +24,7 @@ target_include_directories(chat_server PRIVATE
 
 target_link_libraries(chat_server PRIVATE
     Threads::Threads
-    SQLite::SQLite3
+    sqlite3
 )
 
 install(TARGETS chat_server

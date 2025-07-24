@@ -142,6 +142,7 @@ void Logger::log(LogLevel level, const char* file, const char* function,
 }
 
 void Logger::initLogger(const LogConfig& config) {
+  std::lock_guard<std::mutex> lock(fileOperationMutex_);
   config_ = config;
   currentFilePath_ = getNewLogFilePath();
   openCurrentLogFile();
@@ -162,6 +163,7 @@ void Logger::enqueueLogMessage(const std::string& message) {
 }
 
 void Logger::writeLogToFile(const std::string& message) {
+  std::lock_guard<std::mutex> lock(fileOperationMutex_);
   rotateLogFileIfNeeded();
   if (logFileStream_.is_open()) {
     logFileStream_ << message;

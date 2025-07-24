@@ -8,8 +8,11 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -g")
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread -g")
 
+add_library(sqlite3 third_party/sqlite/sqlite3.c)
+target_include_directories(sqlite3 PUBLIC third_party/sqlite)
+
 find_package(Threads REQUIRED)
-find_package(SQLite3 REQUIRED)
+# find_package(SQLite3 REQUIRED)
 find_package(GTest REQUIRED)
 
 add_subdirectory(src)

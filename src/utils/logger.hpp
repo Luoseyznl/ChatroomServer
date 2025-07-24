@@ -52,7 +52,22 @@ class Logger {
 
  private:
   Logger() = default;
-  ~Logger() = default;
+  ~Logger() {
+    if (config_.asyncLogging && loggingThread_.joinable()) {
+      {
+        std::lock_guard<std::mutex> lock(logMutex_);
+        stopLogging_ = true;
+        logCondition_.notify_one();
+      }
+      loggingThread_.join();
+    }
+
+    // 确保文件安全关闭
+    std::lock_guard<std::mutex> lock(fileOperationMutex_);
+    if (logFileStream_.is_open()) {
+      logFileStream_.close();
+    }
+  }
 
   inline static Logger& getInstance() {
     static Logger instance;
@@ -74,6 +89,7 @@ class Logger {
 
   std::thread loggingThread_;
   std::mutex logMutex_;
+  std::mutex fileOperationMutex_;
   std::condition_variable logCondition_;
   std::queue<std::string> logQueue_;
 

@@ -13,7 +13,7 @@
 std::atomic<bool> running{true};
 // ========== 换 ==========
 // ChatroomServer* global_application = nullptr;
-ChatroomServerEpoll* global_application = nullptr;
+ChatroomServerEpoll* global_application = nullptr;  // epoll
 
 /**
  * @brief 信号处理函数
@@ -25,7 +25,7 @@ void signalHandler(int sig) {
   if (global_application) {
     // ========== 换 ==========
     // global_application->stopServer();
-    global_application->stop();
+    global_application->stop();  // epoll
   }
 }
 
@@ -60,7 +60,6 @@ int main(int argc, char* argv[]) {
 
     // ========== 换 ==========
     // ChatroomServer app(static_dir_path, db_file_path);
-    // global_application = &app;
     ChatroomServerEpoll app(static_dir_path, db_file_path, port);  // epoll
     global_application = &app;
 
@@ -68,7 +67,7 @@ int main(int argc, char* argv[]) {
 
     // ========== 换 ==========
     // app.startServer(port);
-    app.start();
+    app.start();  // epoll
 
     LOG(INFO) << "Server running. Press Ctrl+C to stop.";
 
@@ -80,7 +79,7 @@ int main(int argc, char* argv[]) {
     if (global_application) {
       // ========== 换 ==========
       //   global_application->stopServer();
-      global_application->stop();
+      global_application->stop();  // epoll
       global_application = nullptr;
     }
 
