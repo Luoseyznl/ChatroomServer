@@ -158,10 +158,6 @@ EventLoop 事件循环内部持有一个 Epoller 和多个 Channel。 EventLoop 
 
 --- 
 
-你已经成功实现了 Kafka 事件流集成和消费，下面是梳理后的简明笔记，便于后续查阅和新手参考：
-
----
-
 ## Kafka 事件流集成与测试流程
 
 1. 启动 Kafka 服务
