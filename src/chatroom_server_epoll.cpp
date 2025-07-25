@@ -83,9 +83,12 @@ std::string makeHttpResponse(
 
 ChatroomServerEpoll::ChatroomServerEpoll(const std::string& static_dir_path,
                                          const std::string& db_file_path,
-                                         int port)
+                                         int port,
+                                         const std::string& kafka_brokers)
     : staticDirPath_(static_dir_path),
       dbManager_(std::make_shared<DatabaseManager>(db_file_path)),
+      kafkaProducer_(
+          std::make_unique<KafkaProducer>(kafka_brokers, "chatroom_events")),
       eventLoop_(std::make_unique<reactor::EventLoop>()),
       listenFd_(-1),
       running_(false) {
@@ -292,6 +295,22 @@ void ChatroomServerEpoll::setupRoutes() {
           if (dbManager_->validateUser(username, password)) {
             dbManager_->setUserOnlineStatus(username, true);
             dbManager_->setUserLastActiveTime(username);
+
+            // 添加Kafka事件
+            nlohmann::json kafka_event = {
+                {"username", username},
+                {"action", "login"},
+                {"timestamp",
+                 std::chrono::duration_cast<std::chrono::milliseconds>(
+                     std::chrono::system_clock::now().time_since_epoch())
+                     .count()},
+                {"type", "user_event"}};
+            if (kafkaProducer_->send(kafka_event.dump())) {
+              LOG(INFO) << "Kafka send success: " << kafka_event.dump();
+            } else {
+              LOG(ERROR) << "Kafka send failed: " << kafka_event.dump();
+            }
+
             nlohmann::json resp = {{"status", "success"},
                                    {"username", username}};
             LOG(INFO) << "User logged in: " << username;
@@ -319,6 +338,20 @@ void ChatroomServerEpoll::setupRoutes() {
             if (dbManager_->addUserToRoom(room_name, creator)) {
               LOG(INFO) << "Room created: " << room_name
                         << " by user: " << creator;
+              nlohmann::json kafka_event = {
+                  {"room", room_name},
+                  {"creator", creator},
+                  {"action", "create_room"},
+                  {"timestamp",
+                   std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count()},
+                  {"type", "room_event"}};
+              if (kafkaProducer_->send(kafka_event.dump())) {
+                LOG(INFO) << "Kafka send success: " << kafka_event.dump();
+              } else {
+                LOG(ERROR) << "Kafka send failed: " << kafka_event.dump();
+              }
               return std::string("{\"status\":\"success\"}");
             }
           }
@@ -384,6 +417,18 @@ void ChatroomServerEpoll::setupRoutes() {
           dbManager_->checkAndUpdateInactiveUsers(username);
           if (dbManager_->saveMessage(room_name, username, content,
                                       timestamp)) {
+            // Kafka 消息发送
+            nlohmann::json kafka_message = {{"room", room_name},
+                                            {"username", username},
+                                            {"content", content},
+                                            {"timestamp", timestamp},
+                                            {"type", "chat_message"}};
+            if (kafkaProducer_->send(kafka_message.dump())) {
+              LOG(INFO) << "Kafka send success: " << kafka_message.dump();
+            } else {
+              LOG(ERROR) << "Kafka send failed: " << kafka_message.dump();
+            }
+
             LOG(INFO) << "Message sent in room: " << room_name
                       << " from user: " << username;
             return std::string("{\"status\":\"success\"}");

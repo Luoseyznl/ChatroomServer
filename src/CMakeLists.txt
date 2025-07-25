@@ -9,6 +9,7 @@ set(SOURCES
     utils/thread_pool.cpp
     utils/logger.cpp
     utils/timer.cpp
+    utils/kafka_producer.cpp
     db/database_manager.cpp
     reactor/event_loop.cpp
     reactor/channel.cpp
@@ -17,14 +18,18 @@ set(SOURCES
 
 add_executable(chat_server ${SOURCES})
 
-target_include_directories(chat_server PRIVATE 
+target_include_directories(chat_server
+    PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../third_party
+    ${CMAKE_SOURCE_DIR}/third_party
+    ${CMAKE_SOURCE_DIR}/third_party/librdkafka/src
 )
 
-target_link_libraries(chat_server PRIVATE
+target_link_libraries(chat_server
+    PRIVATE
     Threads::Threads
     sqlite3
+    rdkafka
 )
 
 install(TARGETS chat_server

@@ -8,11 +8,13 @@
 #include "reactor/channel.hpp"
 #include "reactor/epoller.hpp"
 #include "reactor/event_loop.hpp"
+#include "utils/kafka_producer.hpp"
 
 class ChatroomServerEpoll {
  public:
   ChatroomServerEpoll(const std::string& static_dir_path,
-                      const std::string& db_file_path, int port);
+                      const std::string& db_file_path, int port,
+                      const std::string& kafka_brokers = "localhost:9092");
 
   void cleanupPendingChannels();
   void start();
@@ -31,14 +33,6 @@ class ChatroomServerEpoll {
   void handleNewConnection();
   void handleClientEvent(int clientFd);
 
-  std::string staticDirPath_;
-  std::shared_ptr<DatabaseManager> dbManager_;
-  std::unique_ptr<reactor::EventLoop> eventLoop_;
-  int listenFd_{-1};
-  std::unordered_map<int, std::shared_ptr<reactor::Channel>> clientChannels_;
-  std::vector<int> pendingDeleteFds_;
-  std::atomic<bool> running_{false};
-
   // 路由表
   using Handler = std::function<std::string(
       const std::string&, const std::unordered_map<std::string, std::string>&)>;
@@ -51,4 +45,13 @@ class ChatroomServerEpoll {
       const std::string& method, const std::string& path,
       const std::string& body,
       const std::unordered_map<std::string, std::string>& headers);
+
+  std::string staticDirPath_;
+  std::shared_ptr<DatabaseManager> dbManager_;
+  std::unique_ptr<KafkaProducer> kafkaProducer_;
+  std::unique_ptr<reactor::EventLoop> eventLoop_;
+  int listenFd_{-1};
+  std::unordered_map<int, std::shared_ptr<reactor::Channel>> clientChannels_;
+  std::vector<int> pendingDeleteFds_;
+  std::atomic<bool> running_{false};
 };

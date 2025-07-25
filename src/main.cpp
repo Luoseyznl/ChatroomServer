@@ -60,7 +60,8 @@ int main(int argc, char* argv[]) {
 
     // ========== 换 ==========
     // ChatroomServer app(static_dir_path, db_file_path);
-    ChatroomServerEpoll app(static_dir_path, db_file_path, port);  // epoll
+    ChatroomServerEpoll app(static_dir_path, db_file_path, port,
+                            "localhost:9092");  // epoll
     global_application = &app;
 
     LOG(INFO) << "Server listening on port " << port;

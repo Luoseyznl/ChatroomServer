@@ -2,13 +2,16 @@
 本项目是一个高性能服务器的练手项目，实现了两种不同架构的聊天室服务器，用 C++ 实现，支持多用户在线聊天、聊天室创建与加入、消息发送与接收等功能。有以下特点：
 1. 事件驱动架构: 采用异步 IO 和事件回调机制，避免阻塞等待，提高并发处理能力。
 2. 路由分发: 使用路由表将 HTTP 请求分发到对应的处理函数，支持多种请求类型。
-3. 由 sqlite3 和 json 库源码集成，支持数据存储和解析，简化数据处理。
+3. 由 sqlite3 和 JSON 库源码集成，支持数据存储和解析，简化数据处理。
 4. 通过 HTTP 协议提供 RESTful API 接口，支持多种客户端访问方式。
+5. 在用户登录、创建房间、发送消息等操作时以 JSON 异步写入 Kafka topic，便于分析和监控用户行为。
 
 ## 1. 基本原理
 目前项目暂时基于 epoll/reactor 模型实现，主要组件包括 EventLoop、Channel 和 Epoller 等。Epoller 是对 epoll 的封装，负责管理文件描述符 fd 和其感兴趣的事件 event 的映射关系。Channel 将 fd 与其感兴趣的事件（读、写、关闭）、对应的回调处理函数绑定。
 
 EventLoop 事件循环内部持有一个 Epoller 和多个 Channel。 EventLoop 的 loop() 方法调用 Epoller 的 wait() 方法等待事件发生。当有事件发生时 Epoller 返回活跃事件列表，EventLoop 遍历这些事件，根据 fd 找到对应的 Channel，调用 Channel 的 handleEvent() 方法处理事件。
+
+本项目还集成了 Kafka 事件流，目前采用 Docker 单节点部署 Kafka，方便本地开发和练手，具体配置参考 docker-compose.yml。并且项目中的 sqlite3, nlohmann/json, librdkafka 等第三方库都已源码集成到项目中，简化了依赖管理。
 
 ## 2. 项目架构
 ![服务器架构解读](ChatroomServerEpoll.drawio.png)
@@ -32,6 +35,12 @@ EventLoop 事件循环内部持有一个 Epoller 和多个 Channel。 EventLoop 
   3. 事件发生时触发 channel 对应的回调函数，处理客户端请求
   4. 处理完请求后关闭连接，避免长时间占用资源（短链接），延迟统一清理已废弃的 Channel
 - **特点**: 通过事件驱动和非阻塞 IO 实现高并发处理，减少了线程切换和锁竞争。在服务层负责 HTTP 请求的解析和路由分发，提供 RESTful API 接口，支持多种客户端访问方式。接下来可以进一步优化为多线程事件循环模型，减少数据层读写性能瓶颈。
+
+## 3. Kafka 事件流集成
+本项目集成了 Kafka 作为事件流和消息队列中间件。每当用户登录、发送消息、创建房间等操作时，服务器会将相关事件以 JSON 格式写入 Kafka topic（如 `chatroom_events`）。可以实现：
+- 用户行为和聊天室事件的异步记录
+- 支持实时数据分析、监控和审计
+- 便于与其他系统（如消息推送、统计分析）集成。
 
 ## 3. wrk 压力测试
 1. 使用 Lua 脚本定义请求参数和处理逻辑
@@ -146,4 +155,67 @@ EventLoop 事件循环内部持有一个 Epoller 和多个 Channel。 EventLoop 
 - 优化为多线程事件循环模型，减少数据层读写性能瓶颈
 
     ![火焰图](flamgraph.svg)
+
+--- 
+
+你已经成功实现了 Kafka 事件流集成和消费，下面是梳理后的简明笔记，便于后续查阅和新手参考：
+
+---
+
+## Kafka 事件流集成与测试流程
+
+1. 启动 Kafka 服务
+
+    ```sh
+    docker-compose up -d
+    ```
+
+2. 编译并运行聊天室服务器
+
+    ```sh
+    mkdir build && cd build
+    cmake ..
+    make install -j$(nproc)
+    cd bin && ./chat_server
+    ```
+
+3. Kafka 事件消息测试
+
+   - **查看 topic 列表**
+     ```sh
+     docker exec -it kafka bash
+     kafka-topics --bootstrap-server kafka:9092 --list
+     ```
+
+   - **删除 topic（清空所有消息）**
+     ```sh
+     docker exec -it kafka bash
+     kafka-topics --bootstrap-server kafka:9092 --delete --topic chatroom_events
+     ```
+
+   - **消费消息（查看所有历史事件）**
+     ```sh
+     docker exec -it kafka bash
+     kafka-console-consumer --bootstrap-server localhost:9092 --topic chatroom_events --partition 0 --from-beginning
+     ```
+
+   - **查看消息数量（offset）**
+     ```sh
+     docker exec -it kafka bash
+     kafka-run-class kafka.tools.GetOffsetShell --broker-list kafka:9092 --topic chatroom_events --time -1
+     ```
+
+4. 关闭 Kafka 服务
+
+    ```sh
+    docker-compose down
+    ```
+5. 测试结果
+    ```
+    [appuser@7a418eec3c66 ~]$ kafka-console-consumer --bootstrap-server localhost:9092 --topic chatroom_events --partition 0 --from-beginning
+    {"action":"login","timestamp":1753432281839,"type":"user_event","username":"haha"}
+    {"content":"123","room":"123","timestamp":1753432298432,"type":"chat_message","username":"haha"}
+    {"content":"123","room":"123","timestamp":1753432299096,"type":"chat_message","username":"haha"}
+    {"content":"123","room":"123","timestamp":1753432299751,"type":"chat_message","username":"haha"}
+    ```
 
