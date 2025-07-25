@@ -1,2 +1,3 @@
-build/
-kafka_data/
+build/*
+kafka_data/*
+!kafka_data/.gitkeep
