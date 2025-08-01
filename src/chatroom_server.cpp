@@ -8,16 +8,20 @@
 #include "utils/logger.hpp"
 
 ChatroomServer::ChatroomServer(const std::string& static_dir_path,
-                               const std::string& db_file_path)
-    : staticDirPath_(static_dir_path),
-      dbManager_(std::make_shared<DatabaseManager>(db_file_path)) {
+                               const std::string& db_file_path, int port,
+                               const std::string& kafka_brokers)
+    : port_(port),
+      staticDirPath_(static_dir_path),
+      dbManager_(std::make_shared<DatabaseManager>(db_file_path)),
+      kafkaProducer_(
+          std::make_unique<KafkaProducer>(kafka_brokers, "chatroom_events")) {
   LOG(INFO) << "Static directory: " << staticDirPath_;
 }
 
-void ChatroomServer::startServer(int port) {
-  httpServer_ = std::make_unique<http::HttpServer>(port);
+void ChatroomServer::startServer() {
+  httpServer_ = std::make_unique<http::HttpServer>(port_);
   setupRoutes();
-  LOG(INFO) << "ChatroomServer started on port " << port;  // 修正拼写错误
+  LOG(INFO) << "ChatroomServer started on port " << port_;  // 修正拼写错误
   httpServer_->run();
 }
 
@@ -93,6 +97,22 @@ void ChatroomServer::setupRoutes() {
             LOG(INFO) << "User logged in: " << username;
             dbManager_->setUserOnlineStatus(username, true);
             dbManager_->setUserLastActiveTime(username);
+
+            // 添加Kafka事件
+            nlohmann::json kafka_event = {
+                {"username", username},
+                {"action", "login"},
+                {"timestamp",
+                 std::chrono::duration_cast<std::chrono::milliseconds>(
+                     std::chrono::system_clock::now().time_since_epoch())
+                     .count()},
+                {"type", "user_event"}};
+            if (kafkaProducer_->send(kafka_event.dump())) {
+              LOG(INFO) << "Kafka send success: " << kafka_event.dump();
+            } else {
+              LOG(ERROR) << "Kafka send failed: " << kafka_event.dump();
+            }
+
             nlohmann::json response = {{"status", "success"},
                                        {"username", username}};
             http::HttpResponse resp(200, response.dump());
@@ -128,6 +148,22 @@ void ChatroomServer::setupRoutes() {
             if (dbManager_->addUserToRoom(room_name, creator)) {
               LOG(INFO) << "Created room and added creator: " << room_name
                         << ", " << creator;
+              // 添加Kafka事件
+              nlohmann::json kafka_event = {
+                  {"room", room_name},
+                  {"creator", creator},
+                  {"action", "create_room"},
+                  {"timestamp",
+                   std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count()},
+                  {"type", "room_event"}};
+              if (kafkaProducer_->send(kafka_event.dump())) {
+                LOG(INFO) << "Kafka send success: " << kafka_event.dump();
+              } else {
+                LOG(ERROR) << "Kafka send failed: " << kafka_event.dump();
+              }
+
               http::HttpResponse resp(200, "{\"status\":\"success\"}");
               resp.setHeader("Content-Type", "application/json");
               return resp;
@@ -213,6 +249,19 @@ void ChatroomServer::setupRoutes() {
                                       timestamp)) {
             LOG(INFO) << "Message saved from " << username << " in room "
                       << room_name;
+
+            // Kafka 消息发送
+            nlohmann::json kafka_message = {{"room", room_name},
+                                            {"username", username},
+                                            {"content", content},
+                                            {"timestamp", timestamp},
+                                            {"type", "chat_message"}};
+            if (kafkaProducer_->send(kafka_message.dump())) {
+              LOG(INFO) << "Kafka send success: " << kafka_message.dump();
+            } else {
+              LOG(ERROR) << "Kafka send failed: " << kafka_message.dump();
+            }
+
             http::HttpResponse resp(200, "{\"status\":\"success\"}");
             resp.setHeader("Content-Type", "application/json");
             return resp;

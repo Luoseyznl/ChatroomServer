@@ -18,6 +18,10 @@ set(SOURCES
 
 add_executable(chat_server ${SOURCES})
 
+if(WIN32)
+  target_link_libraries(chat_server PRIVATE ws2_32)
+endif()
+
 target_include_directories(chat_server
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}

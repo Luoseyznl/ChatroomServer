@@ -1,17 +1,12 @@
-#include "http_server.hpp"  // Ensure RequestHandler is defined
-
-#include <arpa/inet.h>
-#include <errno.h>  // 添加：用于 errno
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#include "http_server.hpp"
 
 #include <cstring>
-#include <fstream>   // 添加：用于 std::ifstream
-#include <iterator>  // 添加：用于 std::istreambuf_iterator
+#include <fstream> 
+#include <iterator>
 
 #include "http_request.hpp"
 #include "http_response.hpp"
+#include "socket_compat.hpp"
 #include "utils/logger.hpp"
 
 namespace http {
@@ -42,7 +37,7 @@ HttpServer::HttpServer(int port, size_t thread_num)
 
 HttpServer::~HttpServer() {
   stop();
-  close(serverFd_);
+  SOCKET_CLOSE(serverFd_);
 }
 
 void HttpServer::addHandler(const std::string& method, const std::string& path,
@@ -84,7 +79,7 @@ void HttpServer::stop() {
 
 void HttpServer::handleClient(int client_fd) {
   char buffer[4096];
-  ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
+  ssize_t bytes_read = SOCKET_READ(client_fd, buffer, sizeof(buffer) - 1);
 
   if (bytes_read > 0) {
     buffer[bytes_read] = '\0';
@@ -128,12 +123,12 @@ void HttpServer::handleClient(int client_fd) {
     // 循环发送响应数据
     while (remaining > 0) {
       ssize_t bytes_written =
-          write(client_fd, data + total_bytes_written, remaining);
+          SOCKET_WRITE(client_fd, data + total_bytes_written, remaining);
       if (bytes_written < 0) {
-        if (errno == EINTR) {
+        if (SOCKET_ERROR_MSG() == EINTR) {
           continue;  // 如果被信号中断，重试
         }
-        LOG(ERROR) << "Failed to send response: " << strerror(errno);
+        LOG(ERROR) << "Failed to send response: " << strerror(SOCKET_ERROR_MSG());
         break;
       }
       total_bytes_written += bytes_written;
@@ -142,10 +137,10 @@ void HttpServer::handleClient(int client_fd) {
 
     LOG(DEBUG) << "Sent " << total_bytes_written << " bytes";
   } else if (bytes_read < 0) {
-    LOG(ERROR) << "Failed to read from client: " << strerror(errno);
+    LOG(ERROR) << "Failed to read from client: " << strerror(SOCKET_ERROR_MSG());
   }
 
-  close(client_fd);
+  SOCKET_CLOSE(client_fd);
 }
 
 void HttpServer::sendStaticFile(const std::string& absFilePath, int client_fd) {
@@ -153,7 +148,7 @@ void HttpServer::sendStaticFile(const std::string& absFilePath, int client_fd) {
   if (stat(absFilePath.c_str(), &sb) != 0) {
     LOG(ERROR) << "File not found: " << absFilePath;
     HttpResponse response(404, "File not found");
-    write(client_fd, response.toString().c_str(), response.toString().length());
+    SOCKET_WRITE(client_fd, response.toString().c_str(), response.toString().length());
     return;
   }
 
@@ -161,7 +156,7 @@ void HttpServer::sendStaticFile(const std::string& absFilePath, int client_fd) {
   if (!file) {
     LOG(ERROR) << "Failed to open file: " << absFilePath;
     HttpResponse response(500, "Internal Server Error");
-    write(client_fd, response.toString().c_str(), response.toString().length());
+    SOCKET_WRITE(client_fd, response.toString().c_str(), response.toString().length());
     return;
   }
 
@@ -169,7 +164,7 @@ void HttpServer::sendStaticFile(const std::string& absFilePath, int client_fd) {
                       std::istreambuf_iterator<char>());
   HttpResponse response(200, content);
   response.setHeader("Content-Length", std::to_string(content.length()));
-  write(client_fd, response.toString().c_str(), response.toString().length());
+  SOCKET_WRITE(client_fd, response.toString().c_str(), response.toString().length());
 }
 
 HttpServer::RequestHandler HttpServer::findHandler(

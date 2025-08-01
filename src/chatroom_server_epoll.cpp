@@ -115,7 +115,7 @@ ChatroomServerEpoll::ChatroomServerEpoll(const std::string& static_dir_path,
   LOG(INFO) << "Chatroom server initialized on port " << port;
 }
 
-void ChatroomServerEpoll::start() {
+void ChatroomServerEpoll::startServer() {
   running_ = true;
   auto listenChannel = std::make_shared<reactor::Channel>(listenFd_);
   listenChannel->setEvents(EPOLLIN);
@@ -124,7 +124,7 @@ void ChatroomServerEpoll::start() {
   eventLoop_->loop();
 }
 
-void ChatroomServerEpoll::stop() {
+void ChatroomServerEpoll::stopServer() {
   running_ = false;
   if (listenFd_ != -1) {
     close(listenFd_);
@@ -417,6 +417,9 @@ void ChatroomServerEpoll::setupRoutes() {
           dbManager_->checkAndUpdateInactiveUsers(username);
           if (dbManager_->saveMessage(room_name, username, content,
                                       timestamp)) {
+            LOG(INFO) << "Message sent in room: " << room_name
+                      << " from user: " << username;
+
             // Kafka 消息发送
             nlohmann::json kafka_message = {{"room", room_name},
                                             {"username", username},
@@ -429,8 +432,6 @@ void ChatroomServerEpoll::setupRoutes() {
               LOG(ERROR) << "Kafka send failed: " << kafka_message.dump();
             }
 
-            LOG(INFO) << "Message sent in room: " << room_name
-                      << " from user: " << username;
             return std::string("{\"status\":\"success\"}");
           } else {
             LOG(ERROR) << "Failed to save message in room: " << room_name

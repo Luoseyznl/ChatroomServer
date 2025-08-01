@@ -17,8 +17,8 @@ class ChatroomServerEpoll {
                       const std::string& kafka_brokers = "localhost:9092");
 
   void cleanupPendingChannels();
-  void start();
-  void stop();
+  void startServer();
+  void stopServer();
 
  private:
   void setupRoutes();

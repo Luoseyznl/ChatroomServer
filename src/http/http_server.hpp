@@ -7,6 +7,13 @@
 #include "http_response.hpp"
 #include "utils/thread_pool.hpp"
 
+#ifdef _WIN32
+#include <winsock2.h>
+typedef SOCKET socket_t;
+#else
+typedef int socket_t;
+#endif
+
 namespace http {
 class HttpServer {
  public:
@@ -21,7 +28,7 @@ class HttpServer {
   void stop();
 
  private:
-  int serverFd_{-1};
+  socket_t serverFd_{-1};
   int port_{0};
   std::atomic<bool> running_{false};
   utils::ThreadPool threadPool_;
